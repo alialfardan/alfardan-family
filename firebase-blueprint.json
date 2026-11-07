@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "FamilyTreeState": {
+      "title": "FamilyTreeState",
+      "description": "Stores real-time synchronized family tree additions, marriages, mothers, and photos",
+      "type": "object",
+      "properties": {
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp of last modification"
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "User or admin who made the update"
+        }
+      }
+    },
+    "ArchivalPhoto": {
+      "title": "ArchivalPhoto",
+      "description": "Stores individual archival photo or historical document with metadata and image payload",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the archival photo or document"
+        },
+        "title": {
+          "type": "string",
+          "description": "Title of the photo or document"
+        },
+        "url": {
+          "type": "string",
+          "description": "Image URL or compressed data URL"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category such as documents, portraits, events, heritage, historical"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Historical notes and description"
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Update timestamp"
+        }
+      }
+    },
+    "VisitorCounter": {
+      "title": "VisitorCounter",
+      "description": "Tracks total cloud visits to the family tree website",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "number",
+          "description": "Total number of site visits"
+        },
+        "updatedAt": {
+          "type": "number",
+          "description": "Timestamp of last visit increment"
+        }
+      }
+    }
+  },
+  "firestore": {
+    "/family_tree/{docId}": {
+      "schema": "FamilyTreeState",
+      "description": "Holds the shared real-time family tree data state"
+    },
+    "/archival_photos/{docId}": {
+      "schema": "ArchivalPhoto",
+      "description": "Holds individual archival photos and documents for instant cross-domain sync"
+    },
+    "/settings/{docId}": {
+      "schema": "VisitorCounter",
+      "description": "Holds site-wide settings and real-time visitor counter"
+    },
+    "/siteStats/{docId}": {
+      "schema": "VisitorCounter",
+      "description": "Holds real-time visitor counter under siteStats/visits"
+    },
+    "/site_stats/{docId}": {
+      "schema": "VisitorCounter",
+      "description": "Holds real-time site statistics and visit counter"
+    },
+    "/visitors/{docId}": {
+      "schema": "VisitorCounter",
+      "description": "Holds real-time visitor counter under visitors/count"
+    }
+  }
+}
