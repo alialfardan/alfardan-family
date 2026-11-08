@@ -2115,9 +2115,9 @@
       "name": "مريم",
       "gender": "f",
       "year": null,
-      "note": "",
+      "note": "بناتها \nشيخة أم عبدالنبي .. وزهرة أم حسين \nالشهابيات ",
       "parent": "o1",
-      "at": 1793322180886,
+      "at": 1794136191706,
       "del": false
     },
     {
@@ -7333,7 +7333,7 @@
       "gender": "m",
       "note": "",
       "name": "جعفر",
-      "at": 1794136066198,
+      "at": 1794136193155,
       "isDeceased": true,
       "deathYear": null
     },
@@ -7345,7 +7345,7 @@
       "name": "عبدالكريم",
       "note": "",
       "gender": "m",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o206": {
       "year": null,
@@ -7353,11 +7353,11 @@
       "name": "الشيخ شاكر",
       "parent": "o209",
       "note": "",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o491": {
       "note": "يكنى بثأر الله",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o308": {
       "note": "",
@@ -7365,7 +7365,7 @@
       "year": null,
       "parent": "o233",
       "gender": "m",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o378": {
       "year": null,
@@ -7373,138 +7373,138 @@
       "name": "عبدالحسين",
       "gender": "m",
       "parent": "o233",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "oF": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o55": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o49": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o100": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o86": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o103": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o85": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o3": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o1": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o0": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o2": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o125": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "ot0": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "ot1": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "ot2": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "ot3": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o381": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o4": {
       "deathYear": null,
       "isDeceased": true,
       "parent": "am_mvzm8u6pyafp",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o46": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o109": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o108": {
       "deathYear": null,
       "isDeceased": false,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o142": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o31": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o33": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o36": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o30": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198,
+      "at": 1794136193155,
       "motherInfo": {
         "familyOrigin": "عائلة آل فردان",
         "name": "أميرة",
@@ -7516,7 +7516,7 @@
     "o29": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198,
+      "at": 1794136193155,
       "motherInfo": {
         "familyOrigin": "عائلة آل فردان",
         "personKey": "adau_o3_ameera",
@@ -7528,78 +7528,78 @@
     "o303": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o554": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o729": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o644": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o17": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o20": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o93": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o311": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o485": {
       "deathYear": null,
       "isDeceased": true,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o238": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o164": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o15": {
       "deathYear": null,
       "isDeceased": true,
       "parent": "am_mvzm8u6pyafp",
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o91": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o163": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o186": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o247": {
       "motherInfo": {
@@ -7609,7 +7609,7 @@
         "name": "طيبة",
         "familyOrigin": "عائلة آل فردان"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o407": {
       "name": "حسين",
@@ -7624,7 +7624,7 @@
         "name": "",
         "isFromFamily": false
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o408": {
       "name": "حسن",
@@ -7639,7 +7639,7 @@
         "isFromFamily": false,
         "name": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o246": {
       "motherInfo": {
@@ -7649,7 +7649,7 @@
         "personKey": "am_mvzod08fswd5",
         "isFromFamily": true
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o208": {
       "motherInfo": {
@@ -7659,7 +7659,7 @@
         "name": "ميمونة",
         "isFromFamily": true
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o207": {
       "motherInfo": {
@@ -7669,7 +7669,7 @@
         "name": "ميمونة",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o88": {
       "motherInfo": {
@@ -7678,7 +7678,7 @@
         "isFromFamily": false,
         "name": "كلثم بنت حسين مرهون"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o89": {
       "motherInfo": {
@@ -7687,7 +7687,7 @@
         "familyOrigin": "من خارج العائلة",
         "name": "فاطمة مرهون"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o104": {
       "motherInfo": {
@@ -7696,7 +7696,7 @@
         "familyOrigin": "من خارج العائلة",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o321": {
       "motherInfo": {
@@ -7705,7 +7705,7 @@
         "familyOrigin": "من خارج العائلة",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o157": {
       "motherInfo": {
@@ -7715,7 +7715,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o199": {
       "motherInfo": {
@@ -7725,7 +7725,7 @@
         "name": "فاطمة",
         "isFromFamily": true
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o685": {
       "motherInfo": {
@@ -7735,7 +7735,7 @@
         "isFromFamily": true,
         "familyOrigin": "عائلة آل فردان"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o679": {
       "motherInfo": {
@@ -7745,7 +7745,7 @@
         "name": "كاظمية",
         "familyOrigin": "عائلة آل فردان"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o688": {
       "motherInfo": {
@@ -7755,7 +7755,7 @@
         "isFromFamily": true,
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o673": {
       "motherInfo": {
@@ -7765,7 +7765,7 @@
         "familyOrigin": "عائلة آل فردان",
         "name": "مدينة"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o692": {
       "motherInfo": {
@@ -7775,7 +7775,7 @@
         "name": "مدينة",
         "familyOrigin": "عائلة آل فردان"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o718": {
       "motherInfo": {
@@ -7785,7 +7785,7 @@
         "familyOrigin": "عائلة آل فردان",
         "name": "مدينة"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o675": {
       "motherInfo": {
@@ -7795,7 +7795,7 @@
         "name": "مدينة",
         "isFromFamily": true
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o683": {
       "motherInfo": {
@@ -7805,7 +7805,7 @@
         "notes": "",
         "name": "كاظمية"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o678": {
       "motherInfo": {
@@ -7815,7 +7815,7 @@
         "isFromFamily": true,
         "name": "كاظمية"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o596": {
       "motherInfo": {
@@ -7824,7 +7824,7 @@
         "notes": "",
         "isFromFamily": false
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o595": {
       "motherInfo": {
@@ -7833,7 +7833,7 @@
         "familyOrigin": "من خارج العائلة",
         "name": "فاطمة منصور العالي"
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o446": {
       "motherInfo": {
@@ -7843,7 +7843,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o429": {
       "motherInfo": {
@@ -7853,7 +7853,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o426": {
       "motherInfo": {
@@ -7863,7 +7863,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o427": {
       "motherInfo": {
@@ -7873,7 +7873,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o428": {
       "motherInfo": {
@@ -7883,7 +7883,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o723": {
       "motherInfo": {
@@ -7892,7 +7892,7 @@
         "familyOrigin": "من خارج العائلة",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o172": {
       "motherInfo": {
@@ -7902,7 +7902,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o161": {
       "motherInfo": {
@@ -7912,7 +7912,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o167": {
       "motherInfo": {
@@ -7922,7 +7922,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198,
+      "at": 1794136193155,
       "isDeceased": true,
       "deathYear": null
     },
@@ -7934,7 +7934,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o173": {
       "motherInfo": {
@@ -7944,7 +7944,7 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o179": {
       "motherInfo": {
@@ -7954,12 +7954,12 @@
         "familyOrigin": "عائلة آل فردان",
         "notes": ""
       },
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o176": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198,
+      "at": 1794136193155,
       "motherInfo": {
         "name": "رازقية",
         "isFromFamily": true,
@@ -7971,22 +7971,22 @@
     "o266": {
       "isDeceased": false,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o277": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o210": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     },
     "o276": {
       "isDeceased": true,
       "deathYear": null,
-      "at": 1794136066198
+      "at": 1794136193155
     }
   },
   "removed": [
@@ -11142,7 +11142,7 @@
     ],
     "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
   },
-  "updatedAt": 1794136066198,
+  "updatedAt": 1794136193155,
   "notableFigures": [
     {
       "id": "notable_mulla_ali_mahfoudh",
