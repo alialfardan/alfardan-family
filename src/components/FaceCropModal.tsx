@@ -157,7 +157,7 @@ export const FaceCropModal: React.FC<FaceCropModalProps> = ({
   const handleConfirmCrop = () => {
     if (!imageRef.current || !naturalSize.width) return;
 
-    const OUTPUT_SIZE = 350;
+    const OUTPUT_SIZE = 200;
     const canvas = document.createElement('canvas');
     canvas.width = OUTPUT_SIZE;
     canvas.height = OUTPUT_SIZE;
@@ -202,8 +202,11 @@ export const FaceCropModal: React.FC<FaceCropModalProps> = ({
       ctx.restore();
     }
 
-    // High fidelity lightweight 350x350 JPEG (~14KB) for instant Firebase storage
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+    // Ultra-compact 200x200 @ 0.7 Base64 (~5KB-8KB) stored directly in initialTreeData.json and Firebase
+    let dataUrl = canvas.toDataURL('image/webp', 0.7);
+    if (!dataUrl || !dataUrl.startsWith('data:image/webp')) {
+      dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    }
     onCropComplete(dataUrl);
   };
 

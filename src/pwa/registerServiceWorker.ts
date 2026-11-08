@@ -1,49 +1,37 @@
 /**
- * Service Worker Registration & Automatic Update Handler
- * Checks for updates on load and on visibility change, and triggers smooth 1-time reload on controllerchange.
+ * Unregisters any stale Service Workers and clears CacheStorage so that
+ * initialTreeData.json and inline Base64 photos always load fresh without stale caching.
  */
-export function registerServiceWorker(): void {
-  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-    return;
-  }
+export function unregisterServiceWorkersAndClearCaches(): void {
+  if (typeof window === 'undefined') return;
 
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        // Check for updates periodically and when user returns to tab
-        document.addEventListener('visibilitychange', () => {
-          if (document.visibilityState === 'visible') {
-            registration.update().catch(() => {});
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+          for (const reg of registrations) {
+            reg.unregister().catch(() => {});
           }
-        });
-
-        // Check if an update is found
-        registration.addEventListener('updatefound', () => {
-          const installingWorker = registration.installing;
-          if (!installingWorker) return;
-
-          installingWorker.addEventListener('statechange', () => {
-            if (
-              installingWorker.state === 'installed' &&
-              navigator.serviceWorker.controller
-            ) {
-              // New content is available; will be claimed immediately by skipWaiting
-            }
-          });
-        });
-      })
-      .catch((error) => {
-        console.warn('PWA ServiceWorker registration failed:', error);
-      });
-
-    // Smooth one-time refresh when the new worker takes control
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!refreshing) {
-        refreshing = true;
-        window.location.reload();
-      }
-    });
-  });
+        })
+        .catch(() => {});
+    }
+    if ('caches' in window && window.caches) {
+      window.caches
+        .keys()
+        .then((keys) => {
+          for (const key of keys) {
+            window.caches.delete(key).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  } catch {
+    // Ignore errors in restricted environments
+  }
 }
+
+export function registerServiceWorker(): void {
+  unregisterServiceWorkersAndClearCaches();
+}
+

@@ -228,8 +228,8 @@ export function mergeNotableFiguresLists(
   return Array.from(byId.values());
 }
 
-const STORAGE_KEY = 'fardan_family_tree_state_v4';
-const CUSTOM_AVATARS_STORAGE_KEY = 'fardan_custom_avatars_v1';
+const STORAGE_KEY = 'fardan_family_tree_state_v5';
+const CUSTOM_AVATARS_STORAGE_KEY = 'fardan_custom_avatars_v2';
 
 const VALID_PHOTO_KEY_RE = /^(o\d+|oF|oR|am_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+)$/;
 
@@ -247,9 +247,6 @@ export function isValidPhotoEntry(key: string, val: unknown): val is string {
   ) {
     return false;
   }
-  if (trimmed.startsWith('/avatars/')) {
-    return /^\/avatars\/(o\d+|oF|oR|am_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(trimmed);
-  }
   return true;
 }
 
@@ -262,7 +259,7 @@ export function loadCustomAvatarsBackup(): Record<string, string> {
     if (!parsed || typeof parsed !== 'object') return {};
     const clean: Record<string, string> = {};
     for (const [k, v] of Object.entries(parsed)) {
-      if (isValidPhotoEntry(k, v)) {
+      if (isValidPhotoEntry(k, v) && v.trim().startsWith('data:image/')) {
         clean[k] = v.trim();
       }
     }
@@ -279,10 +276,10 @@ export function saveCustomAvatarBackup(key: string, dataUrl: string): void {
     if (dataUrl.length > 200000) return;
     const current = loadCustomAvatarsBackup();
     current[key] = dataUrl;
-    // Cap to at most 10 recent avatar backups to stay well below 1MB
+    // Cap to at most 15 recent avatar backups to stay well below 1MB
     const keys = Object.keys(current);
-    if (keys.length > 10) {
-      for (let i = 0; i < keys.length - 10; i++) {
+    if (keys.length > 15) {
+      for (let i = 0; i < keys.length - 15; i++) {
         delete current[keys[i]];
       }
     }
@@ -293,7 +290,6 @@ export function saveCustomAvatarBackup(key: string, dataUrl: string): void {
       try {
         localStorage.setItem(CUSTOM_AVATARS_STORAGE_KEY, JSON.stringify(current));
       } catch {
-        // If still failing, clear custom avatars key to prioritize tree state
         try { localStorage.removeItem(CUSTOM_AVATARS_STORAGE_KEY); } catch {}
       }
     }
@@ -313,10 +309,12 @@ export function cleanupObsoleteStorageKeys(): void {
   if (typeof window === 'undefined') return;
   try {
     const legacyKeys = [
+      'fardan_family_tree_state_v4',
       'fardan_family_tree_state_v3',
       'fardan_family_tree_state_v2',
       'fardan_family_tree_state_v1',
       'fardan_family_tree_state',
+      'fardan_custom_avatars_v1',
       'fardan_firestore_quota_exhausted_v2',
       'fardan_firestore_quota_exhausted'
     ];
@@ -343,6 +341,7 @@ const DEAD_PHOTO_KEYS = new Set([
 export function cleanPhotosMap(photos?: Record<string, string>): Record<string, string> {
   const clean: Record<string, string> = {};
   if (!photos || typeof photos !== 'object') return clean;
+  const defaultPhotos = DEFAULT_FAMILY_DATA?.photos || {};
   for (const [k, v] of Object.entries(photos)) {
     if (v === '') {
       // Explicit removal marker for a valid person key
@@ -350,7 +349,16 @@ export function cleanPhotosMap(photos?: Record<string, string>): Record<string, 
         clean[k] = '';
       }
     } else if (isValidPhotoEntry(k, v)) {
-      clean[k] = v.trim();
+      const trimmed = v.trim();
+      if (trimmed.startsWith('/avatars/')) {
+        // Resolve any legacy /avatars/ file path to its embedded Base64 from initialTreeData.json
+        const fallbackB64 = defaultPhotos[k];
+        if (typeof fallbackB64 === 'string' && fallbackB64.startsWith('data:image/')) {
+          clean[k] = fallbackB64;
+        }
+      } else {
+        clean[k] = trimmed;
+      }
     }
   }
   return clean;
@@ -552,30 +560,33 @@ export function mergeFamilyStates(
     forceIncomingAuthoritative
   );
 
-  // ZERO PHOTO LOSS Smart Merge:
-  // Strictly prevent any existing photo from being overwritten with empty/null/undefined,
-  // while immediately adopting newly uploaded photos (especially base64 350x350 avatars from Firebase).
+  // Embedded Base64 Photo Merge:
+  // Start with DEFAULT_FAMILY_DATA.photos (from src/data/initialTreeData.json), layer customBackups and base.photos,
+  // and merge incoming updates while honoring explicit '' deletions and always preferring Base64 over /avatars/ paths.
   const rawBasePhotos = cleanPhotosMap(base.photos);
   const rawIncPhotos = cleanPhotosMap(incoming.photos);
   const customBackups = loadCustomAvatarsBackup();
   const baselinePhotos = cleanPhotosMap(DEFAULT_FAMILY_DATA.photos);
   const mergedPhotos: Record<string, string> = { ...baselinePhotos, ...customBackups, ...rawBasePhotos };
 
-  // Harvest photo fields attached directly to member objects (e.g. from imports or mobile uploads)
+  // Harvest photo fields attached directly to member objects
   for (const m of [...(base.members || []), ...(incoming.members || [])]) {
     if (!m) continue;
     const mKey = 'a' + m.id;
     const mPhoto = (m as any).photo || (m as any).avatar || (m as any).image || (m as any).photoUrl;
-    if (typeof mPhoto === 'string' && mPhoto.trim()) {
-      if (!mergedPhotos[mKey] || mPhoto.trim().startsWith('data:image/')) {
-        mergedPhotos[mKey] = mPhoto.trim();
-      }
+    if (typeof mPhoto === 'string' && mPhoto.trim().startsWith('data:image/')) {
+      mergedPhotos[mKey] = mPhoto.trim();
     }
   }
 
   for (const [k, incVal] of Object.entries(rawIncPhotos)) {
+    if (incVal === '') {
+      if (incomingIsNewer || forceIncomingAuthoritative) {
+        delete mergedPhotos[k];
+      }
+      continue;
+    }
     if (typeof incVal !== 'string' || !incVal.trim()) {
-      // ZERO PHOTO LOSS: Never overwrite an existing valid photo with empty string or null!
       continue;
     }
     const cleanIncVal = incVal.trim();
@@ -583,23 +594,15 @@ export function mergeFamilyStates(
     if (!baseVal || !baseVal.trim()) {
       mergedPhotos[k] = cleanIncVal;
     } else if (cleanIncVal.startsWith('data:image/')) {
-      // Newly uploaded compressed base64 photo in Firebase/Cloud ALWAYS wins immediately so it displays on all sites in the same second!
-      mergedPhotos[k] = cleanIncVal;
-      saveCustomAvatarBackup(k, cleanIncVal);
-    } else if (baseVal.startsWith('data:image/') && cleanIncVal.startsWith('/avatars/')) {
-      // Keep the instant in-memory base64 image so it never flickers or 404s while static CDN builds
-      const incV = parseInt(cleanIncVal.split('?v=')[1] || '0', 10);
-      if (incV > baseTime && !forceIncomingAuthoritative) {
+      if (incomingIsNewer || forceIncomingAuthoritative || !baseVal.startsWith('data:image/')) {
         mergedPhotos[k] = cleanIncVal;
+        saveCustomAvatarBackup(k, cleanIncVal);
       }
-    } else if (forceIncomingAuthoritative) {
+    } else if (baseVal.startsWith('data:image/')) {
+      // Always retain the embedded Base64 photo over any non-Base64 string
+      mergedPhotos[k] = baseVal;
+    } else if (forceIncomingAuthoritative || incomingIsNewer) {
       mergedPhotos[k] = cleanIncVal;
-    } else {
-      const baseV = parseInt(baseVal.split('?v=')[1] || '0', 10);
-      const incV = parseInt(cleanIncVal.split('?v=')[1] || '0', 10);
-      if (incV > baseV || (incV === baseV && incomingIsNewer)) {
-        mergedPhotos[k] = cleanIncVal;
-      }
     }
   }
 
@@ -679,11 +682,6 @@ export function mergeFamilyStates(
         archivalById.set(p.id, p);
       } else if (!p.id.startsWith('arch_')) {
         archivalById.set(p.id, p);
-      }
-    } else if (p && p.id && p.url && archivalById.has(p.id)) {
-      const existing = archivalById.get(p.id)!;
-      if (existing.url.startsWith('data:image/') && p.url.startsWith('/avatars/')) {
-        archivalById.set(p.id, { ...existing, url: p.url });
       }
     }
   }
@@ -770,7 +768,6 @@ export function loadSavedState(): FamilyState {
     }
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.members)) {
-      // Preserve any base64 avatars found in localStorage into customBackups (Zero Photo Loss)
       if (parsed.photos && typeof parsed.photos === 'object') {
         for (const [k, v] of Object.entries(parsed.photos)) {
           if (typeof v === 'string' && v.startsWith('data:image/')) {
@@ -778,8 +775,8 @@ export function loadSavedState(): FamilyState {
           }
         }
       }
-      // Never let stale localStorage override newer DEFAULT_FAMILY_DATA; Firebase & Live Cloud will immediately override on mount
-      return mergeFamilyStates(parsed, baseDefault);
+      // Read data from src/data/initialTreeData.json (baseDefault) and merge any newer updates on top
+      return mergeFamilyStates(baseDefault, parsed);
     }
   } catch (err) {
     console.error('Failed to parse saved family state:', err);
@@ -787,44 +784,66 @@ export function loadSavedState(): FamilyState {
   return baseDefault;
 }
 
+/**
+ * Physical Disk-Write Bridge:
+ * Immediately writes the complete tree data (all 1380+ members & Base64 photos) to
+ * src/data/initialTreeData.json and public/fardan_family_tree_backup.json on disk via /__save_tree_to_disk.
+ */
+export async function saveTreeToDisk(state: FamilyState): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  try {
+    const cleanPhotos = cleanPhotosMap(state.photos);
+    const fullPayload = {
+      treeData: RAW_TREE,
+      familyData: {
+        ...state,
+        members: deduplicateMembers(state.members || []),
+        photos: cleanPhotos,
+        updatedAt: normalizeTimestamp(state.updatedAt) || Date.now()
+      }
+    };
+    const res = await fetch('/__save_tree_to_disk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fullPayload)
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function saveStateToStorage(state: FamilyState): void {
   try {
     if (!state || typeof window === 'undefined') return;
-    
-    // 1. Keep 350x350 compressed base64 photos (<90KB) directly in state so they render immediately without 404s
+
+    // Immediately trigger physical disk write so src/data/initialTreeData.json is updated on every state save
+    saveTreeToDisk(state).catch(() => {});
+
+    // Keep delta/modified Base64 photos in localStorage while baseline photos are already embedded in initialTreeData.json
+    const baselinePhotos = DEFAULT_FAMILY_DATA.photos || {};
     const compactPhotos: Record<string, string> = {};
     if (state.photos && typeof state.photos === 'object') {
       for (const [k, v] of Object.entries(state.photos)) {
         if (typeof v === 'string') {
           if (v.startsWith('data:image/')) {
-            if (v.length < 150000) {
+            if (v !== baselinePhotos[k] && v.length < 150000) {
               saveCustomAvatarBackup(k, v);
-            }
-            if (v.length < 90000) {
               compactPhotos[k] = v;
-            } else {
-              compactPhotos[k] = `/avatars/${k}.jpg`;
+            } else if (v.length < 40000) {
+              compactPhotos[k] = v;
             }
-          } else {
+          } else if (!v.startsWith('/avatars/')) {
             compactPhotos[k] = v;
           }
         }
       }
     }
 
-
-    // 2. Keep archival photos compact in localStorage state (replace base64 with URL)
-    const compactArchival = (state.archivalPhotos || []).map(p => {
-      if (p.url && p.url.startsWith('data:image/')) {
-        return { ...p, url: `/avatars/${p.id}.jpg` };
-      }
-      return p;
-    });
-
     const stateToSave: FamilyState = {
       ...state,
       photos: compactPhotos,
-      archivalPhotos: compactArchival
+      archivalPhotos: state.archivalPhotos || []
     };
 
     const serialized = JSON.stringify(stateToSave);
@@ -832,32 +851,28 @@ export function saveStateToStorage(state: FamilyState): void {
     try {
       localStorage.setItem(STORAGE_KEY, serialized);
     } catch {
-      // Step A: Purge legacy keys to free storage
       cleanupObsoleteStorageKeys();
       try {
         localStorage.setItem(STORAGE_KEY, serialized);
       } catch {
-        // Step B: If still exceeding quota, remove custom avatar backup to free space
         try { localStorage.removeItem(CUSTOM_AVATARS_STORAGE_KEY); } catch {}
         try {
-          // Save without archivalPhotos
           const minimalState: FamilyState = {
             ...stateToSave,
             archivalPhotos: []
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalState));
         } catch {
-          // Step C: Fallback to only essential member/marriage delta
           try {
-            const strippedPhotos: Record<string, string> = {};
+            const deltaOnlyPhotos: Record<string, string> = {};
             for (const [k, v] of Object.entries(compactPhotos)) {
-              if (!v.startsWith('data:image/')) {
-                strippedPhotos[k] = v;
+              if (v !== baselinePhotos[k]) {
+                deltaOnlyPhotos[k] = v;
               }
             }
             const ultraCompact: FamilyState = {
               members: stateToSave.members,
-              photos: strippedPhotos,
+              photos: deltaOnlyPhotos,
               over: stateToSave.over,
               removed: stateToSave.removed,
               spouses: stateToSave.spouses,
@@ -867,9 +882,7 @@ export function saveStateToStorage(state: FamilyState): void {
               updatedAt: stateToSave.updatedAt
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(ultraCompact));
-          } catch {
-            // Absolute safety catch: if browser storage is 100% blocked, gracefully degrade
-          }
+          } catch {}
         }
       }
     }

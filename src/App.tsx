@@ -15,8 +15,10 @@ import {
   loadCustomAvatarsBackup,
   saveCustomAvatarBackup,
   removeCustomAvatarBackup,
-  isValidPhotoEntry
+  isValidPhotoEntry,
+  saveTreeToDisk
 } from './data/treeManager';
+import { unregisterServiceWorkersAndClearCaches } from './pwa/registerServiceWorker';
 import { getDefaultAvatarDataUri, markAvatarUrlFailed } from './components/MemberAvatar';
 import {
   subscribeToFamilyState,
@@ -64,28 +66,7 @@ import {
 } from './services/notificationService';
 import { NotificationGuideModal } from './components/NotificationGuideModal';
 import { WelcomeDisclaimerModal } from './components/WelcomeDisclaimerModal';
-import { CheckCircle2, AlertCircle } from 'lucide-react';
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === 'string' && reader.result.startsWith('data:image/')) {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Invalid image dataUrl'));
-      }
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
-function extractAvatarVersion(url: string | undefined | null): number {
-  if (!url) return 0;
-  const match = url.match(/[?&]v=(\d+)/);
-  return match ? Number(match[1]) || 0 : 0;
-}
+import { CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   // Family Data State
@@ -162,185 +143,26 @@ export default function App() {
     return () => window.removeEventListener('error', handleImageError, true);
   }, []);
 
-  // Automatic Browser Photo Recovery & Self-Healing Sync:
-  // Scans localStorage backups, historical localStorage keys, Service Worker CacheStorage (window.caches),
-  // and browser HTTP cache for any uploaded member photos (such as o438 Jafar bin Ibrahim, his sons, etc.)
-  // that were uploaded in the browser and re-anchors them permanently on the server and in familyState.
+  // Clear stale Service Workers & CacheStorage on load, and ensure any Base64 photos in browser storage are anchored to disk
   useEffect(() => {
+    unregisterServiceWorkersAndClearCaches();
+
     let isCancelled = false;
-
-    async function recoverAndSyncUploadedAvatars() {
+    async function syncBrowserBase64AvatarsToDisk() {
       try {
-        // 1. Fetch currently available avatar files on the server disk
-        const serverFilesSet = new Set<string>();
-        try {
-          const availRes = await apiFetch('/api/available-avatars', { cache: 'no-store' });
-          if (availRes.ok) {
-            const availList = await availRes.json();
-            if (Array.isArray(availList)) {
-              for (const item of availList) {
-                if (item && typeof item.filename === 'string') {
-                  serverFilesSet.add(item.filename);
-                }
-              }
-            }
-          }
-        } catch (_) {}
-
-        // 2. Gather candidate photos from all localStorage keys + customAvatarsBackup
-        const localCandidates = new Map<string, string>();
         const customBackups = loadCustomAvatarsBackup();
-        for (const [k, v] of Object.entries(customBackups)) {
-          if (isValidPhotoEntry(k, v)) {
-            localCandidates.set(k, v.trim());
-          }
-        }
-
-        const storageKeys = [
-          'fardan_family_tree_state_v4',
-          'fardan_family_tree_state_v3',
-          'fardan_family_tree_state_v2',
-          'fardan_family_tree_state_v1'
-        ];
-        for (const sk of storageKeys) {
-          try {
-            const raw = localStorage.getItem(sk);
-            if (!raw) continue;
-            const parsed = JSON.parse(raw);
-            const photosObj = parsed?.photos || parsed?.familyData?.photos;
-            if (photosObj && typeof photosObj === 'object') {
-              for (const [k, v] of Object.entries(photosObj)) {
-                if (isValidPhotoEntry(k, v)) {
-                  const cleanVal = v.trim();
-                  const existing = localCandidates.get(k);
-                  if (!existing || (cleanVal.startsWith('data:image/') && !existing.startsWith('data:image/'))) {
-                    localCandidates.set(k, cleanVal);
-                  } else if (existing && extractAvatarVersion(cleanVal) > extractAvatarVersion(existing)) {
-                    localCandidates.set(k, cleanVal);
-                  }
-                }
-              }
-            }
-            // Remove obsolete v1, v2, v3 keys immediately after reading to free browser storage
-            if (sk !== 'fardan_family_tree_state_v4') {
-              try { localStorage.removeItem(sk); } catch (_) {}
-            }
-          } catch (_) {}
-        }
-
-        // 3. Scan Service Worker CacheStorage (window.caches) for any cached /avatars/{key}.jpg responses
-        const swCachedBlobs = new Map<string, { url: string; version: number; blob: Blob }>();
-        if (typeof window !== 'undefined' && 'caches' in window) {
-          try {
-            const cacheNames = await window.caches.keys();
-            for (const cacheName of cacheNames) {
-              const cache = await window.caches.open(cacheName);
-              const requests = await cache.keys();
-              for (const req of requests) {
-                try {
-                  const parsedUrl = new URL(req.url, window.location.origin);
-                  const m = parsedUrl.pathname.match(/^\/avatars\/(o\d+|oF|oR|am_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)$/i);
-                  if (!m) continue;
-                  const memberKey = m[1];
-                  const fullRelUrl = parsedUrl.pathname + parsedUrl.search;
-                  const ver = extractAvatarVersion(fullRelUrl);
-                  const prevEntry = swCachedBlobs.get(memberKey);
-                  if (prevEntry && prevEntry.version >= ver) continue;
-
-                  const resp = await cache.match(req);
-                  if (resp && resp.ok) {
-                    const blob = await resp.blob();
-                    if (blob && blob.size > 200 && (!blob.type || blob.type.startsWith('image/'))) {
-                      swCachedBlobs.set(memberKey, {
-                        url: fullRelUrl,
-                        version: ver,
-                        blob
-                      });
-                    }
-                  }
-                } catch (_) {}
-              }
-            }
-          } catch (_) {}
-        }
-
-        if (isCancelled) return;
-
-        // 4. Determine which avatars need recovery/re-upload to the server or state restoration
-        const toUpload = new Map<string, string>(); // memberKey -> dataUrl
+        const recoveredBase64: Record<string, string> = {};
         const currentPhotos = familyState.photos || {};
 
-        // Check localCandidates (base64 or SW-cached /avatars/ URLs in localStorage — never probe missing files over HTTP)
-        for (const [memberKey, candidateVal] of localCandidates.entries()) {
-          if (candidateVal.startsWith('data:image/')) {
-            const filename = `${memberKey}.jpg`;
-            if (!serverFilesSet.has(filename) || !currentPhotos[memberKey] || currentPhotos[memberKey].startsWith('data:image/')) {
-              toUpload.set(memberKey, candidateVal);
-            }
-          } else if (candidateVal.startsWith('/avatars/')) {
-            const m = candidateVal.match(/^\/avatars\/([a-zA-Z0-9_-]+\.(?:jpg|jpeg|png|webp))/i);
-            const filename = m ? m[1] : `${memberKey}.jpg`;
-            if (!serverFilesSet.has(filename)) {
-              const swHit = swCachedBlobs.get(memberKey);
-              if (swHit) {
-                try {
-                  const dataUrl = await blobToDataUrl(swHit.blob);
-                  toUpload.set(memberKey, dataUrl);
-                } catch (_) {}
-              }
+        for (const [k, v] of Object.entries(customBackups)) {
+          if (isValidPhotoEntry(k, v) && v.startsWith('data:image/') && currentPhotos[k] !== '') {
+            if (!currentPhotos[k] || !currentPhotos[k].startsWith('data:image/')) {
+              recoveredBase64[k] = v.trim();
             }
           }
         }
 
-        // Check all Service Worker cached avatars (catches photos like o438 whose state entry was overwritten before container restart)
-        for (const [memberKey, swEntry] of swCachedBlobs.entries()) {
-          if (toUpload.has(memberKey)) continue;
-          const filename = `${memberKey}.jpg`;
-          const curUrl = currentPhotos[memberKey];
-          // Skip if explicitly deleted by admin (empty string '')
-          if (curUrl === '') continue;
-
-          const curVer = extractAvatarVersion(curUrl);
-          const isMissingOnServer = !serverFilesSet.has(filename);
-          const isMissingInState = !curUrl && swEntry.version > 0;
-          const isNewerInCache = swEntry.version > 0 && swEntry.version > curVer;
-
-          if (isMissingOnServer || isMissingInState || isNewerInCache) {
-            try {
-              const dataUrl = await blobToDataUrl(swEntry.blob);
-              toUpload.set(memberKey, dataUrl);
-            } catch (_) {}
-          }
-        }
-
-        if (toUpload.size === 0 || isCancelled) return;
-
-        const recoveredUrls: Record<string, string> = {};
-        for (const [memberKey, dataUrl] of toUpload.entries()) {
-          if (isCancelled) break;
-          saveCustomAvatarBackup(memberKey, dataUrl);
-          try {
-            const res = await apiFetch('/api/upload-avatar', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ key: memberKey, dataUrl })
-            });
-            if (res.ok) {
-              const data = await res.json();
-              if (data?.url) {
-                recoveredUrls[memberKey] = data.url;
-              } else {
-                recoveredUrls[memberKey] = dataUrl;
-              }
-            } else {
-              recoveredUrls[memberKey] = dataUrl;
-            }
-          } catch (_) {
-            recoveredUrls[memberKey] = dataUrl;
-          }
-        }
-
-        if (Object.keys(recoveredUrls).length > 0 && !isCancelled) {
+        if (Object.keys(recoveredBase64).length > 0 && !isCancelled) {
           lastImmediateSyncAtRef.current = Date.now();
           setFamilyState(prev => {
             const nextTs = getMonotonicTimestamp(prev);
@@ -348,26 +170,25 @@ export default function App() {
               ...prev,
               photos: {
                 ...(prev.photos || {}),
-                ...recoveredUrls
+                ...recoveredBase64
               },
               updatedAt: nextTs
             };
             saveStateToStorage(nextState);
+            saveTreeToDisk(nextState).catch(() => {});
             syncFamilyStateToCloud(nextState).catch(() => {});
-            apiFetch('/api/save-family-data', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(nextState)
-            }).catch(() => {});
             return nextState;
           });
+        } else {
+          // Ensure initial disk files are in sync with current loaded state
+          saveTreeToDisk(familyState).catch(() => {});
         }
       } catch (err) {
-        console.warn('Avatar recovery scan warning:', err);
+        console.warn('Avatar sync notice:', err);
       }
     }
 
-    recoverAndSyncUploadedAvatars();
+    syncBrowserBase64AvatarsToDisk();
     return () => {
       isCancelled = true;
     };
@@ -497,29 +318,7 @@ export default function App() {
         }
         for (const cp of cloudPhotos) {
           if (cp && cp.id && !deletedIds.includes(cp.id)) {
-            const existing = byId.get(cp.id);
-            // Keep /avatars/ URL if local already converted it and cloud still has base64
-            if (existing && existing.url.startsWith('/avatars/') && cp.url.startsWith('data:image/')) {
-              byId.set(cp.id, { ...cp, url: existing.url });
-            } else {
-              byId.set(cp.id, cp);
-            }
-
-            // If cloud photo is still base64, persist to /api/upload-avatar on server so it pushes to GitHub
-            if (cp.url.startsWith('data:image/')) {
-              apiFetch('/api/upload-avatar', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: cp.id, dataUrl: cp.url })
-              })
-                .then(r => (r.ok ? r.json() : null))
-                .then(resData => {
-                  if (resData?.url) {
-                    syncArchivalPhotoToCloud({ ...cp, url: resData.url }).catch(() => {});
-                  }
-                })
-                .catch(() => {});
-            }
+            byId.set(cp.id, cp);
           }
         }
         const nextArchival = Array.from(byId.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -873,7 +672,7 @@ export default function App() {
     showToast('تم طي الشجرة للوضع التأسيسي', 'info');
   }, [showToast]);
 
-  // Helper to immediately and permanently anchor state across localStorage, Firestore, live server endpoints, and GitHub
+  // Helper to immediately and permanently anchor state across disk (initialTreeData.json), localStorage, Firestore, and live server
   const persistAndSyncImmediately = useCallback((nextState: FamilyState) => {
     const nextTs = getMonotonicTimestamp(nextState);
     lastImmediateSyncAtRef.current = Date.now();
@@ -884,19 +683,20 @@ export default function App() {
     saveStateToStorage(stampedState);
     setHasUnsavedServerChanges(false);
 
-    // 1. Direct instant write to Firebase (Single Source of Truth)
+    // 1. Direct physical write to src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /__save_tree_to_disk
+    saveTreeToDisk(stampedState).catch(err => {
+      console.warn('Immediate disk write error:', err);
+    });
+
+    // 2. Direct instant write to Firebase Firestore
     syncFamilyStateToCloud(stampedState).catch(err => {
       console.warn('Immediate cloud sync error:', err);
     });
 
-    // 2. Direct instant mirror to both local dev and live cloud server endpoints + background GitHub push
-    mirrorSaveToAllEndpoints('/api/save-family-data', stampedState)
-      .then(() => {
-        mirrorSaveToAllEndpoints('/api/publish-to-github', {}).catch(() => {});
-      })
-      .catch(err => {
-        console.warn('Immediate save-family-data error:', err);
-      });
+    // 3. Direct instant mirror to server endpoints
+    mirrorSaveToAllEndpoints('/api/save-family-data', stampedState).catch(err => {
+      console.warn('Immediate save-family-data error:', err);
+    });
   }, []);
 
   // Add / Edit submission
@@ -952,22 +752,16 @@ export default function App() {
           updatedAt: nextTs
         };
         saveStateToStorage(nextState);
-        // Instant sync to Firebase & live cloud so all devices and alfardanfamily.com see new member + photo immediately
         persistAndSyncImmediately(nextState);
         return nextState;
       });
-
-      // Archive binary avatar on disk for GitHub without replacing the instant inline base64 photo in state
-      if (isBase64Photo && data.photo) {
-        mirrorSaveToAllEndpoints('/api/upload-avatar', { key: newMemberKey, dataUrl: data.photo }).catch(() => {});
-      }
 
       // Expand parent and select new person
       setExpandedKeys(prev => new Set(prev).add(data.parentKey));
       setSelectedKey(newMemberKey);
       setIsDrawerOpen(true);
       setAddEditModal({ isOpen: false, mode: 'add', targetKey: '' });
-      showToast(`تمت إضافة «${data.name}» ومزامنتها فوراً في جميع المواقع 🌿`);
+      showToast(`تمت إضافة «${data.name}» وحفظها فوراً في ملفات المشروع و Firebase 🌿`);
     } else {
       // Edit existing
       const key = addEditModal.targetKey;
@@ -1060,13 +854,8 @@ export default function App() {
         });
       }
 
-      // Archive binary avatar on disk for GitHub without replacing the instant inline base64 photo in state
-      if (data.photo && data.photo.startsWith('data:image/')) {
-        mirrorSaveToAllEndpoints('/api/upload-avatar', { key, dataUrl: data.photo }).catch(() => {});
-      }
-
       setAddEditModal({ isOpen: false, mode: 'edit', targetKey: '' });
-      showToast(`تم تحديث «${data.name}» ومزامنتها لحظياً في جميع المواقع 🌿`);
+      showToast(`تم تحديث «${data.name}» وحفظها فوراً في ملفات المشروع و Firebase 🌿`);
     }
   };
 
@@ -1279,7 +1068,7 @@ export default function App() {
     if (!faceCropModal.targetKey) return;
     const key = faceCropModal.targetKey;
 
-    // 1. Permanently anchor compressed 350x350 @ 0.75 base64 image in state + Firebase + live server immediately
+    // 1. Permanently anchor compressed 200x200 @ 0.7 base64 image in state + initialTreeData.json + Firebase immediately
     saveCustomAvatarBackup(key, croppedDataUrl);
     lastImmediateSyncAtRef.current = Date.now();
 
@@ -1291,18 +1080,12 @@ export default function App() {
         updatedAt: nextTs
       };
       saveStateToStorage(nextState);
-      // Instant cloud sync so both alfardanfamily.com and AI Studio render the inline image in the same second
       persistAndSyncImmediately(nextState);
       return nextState;
     });
 
     setFaceCropModal({ isOpen: false, imageSrc: '', targetKey: '', memberName: '' });
-    showToast('تم حفظ الصورة ونشرها سحابياً ولحظياً في جميع المواقع بنجاح 🌿', 'success');
-
-    // 2. Archive binary file to public/avatars/ in background for GitHub without replacing the instant inline base64 in state
-    mirrorSaveToAllEndpoints('/api/upload-avatar', { key, dataUrl: croppedDataUrl }).catch((e) => {
-      console.warn('Avatar background upload notice:', e);
-    });
+    showToast('تم حفظ الصورة كـ Base64 مضغوطة في ملفات المشروع و Firebase فوراً 🌿', 'success');
   };
 
   // Delete Member (إلغاء / حذف اسم من الشجرة مع تحديث فوري على Firebase و GitHub)
@@ -1440,36 +1223,6 @@ export default function App() {
       persistAndSyncImmediately(nextState);
       return nextState;
     });
-
-    // 3. If image is base64, upload to /api/upload-avatar to bake into public/avatars/ and push to GitHub
-    if (savedPhoto.url.startsWith('data:image/')) {
-      apiFetch('/api/upload-avatar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: photoId, dataUrl: savedPhoto.url })
-      })
-        .then(r => (r.ok ? r.json() : null))
-        .then(resData => {
-          if (resData?.url) {
-            const fileBackedPhoto: ArchivalPhoto = { ...savedPhoto, url: resData.url };
-            syncArchivalPhotoToCloud(fileBackedPhoto).catch(() => {});
-            setFamilyState(prev => {
-              const nextState: FamilyState = {
-                ...prev,
-                archivalPhotos: (prev.archivalPhotos || []).map(p =>
-                  p.id === photoId ? fileBackedPhoto : p
-                )
-              };
-              persistAndSyncImmediately(nextState);
-              return nextState;
-            });
-            apiFetch('/api/publish-to-github', { method: 'POST' }).catch(() => {});
-          }
-        })
-        .catch(() => {});
-    } else {
-      apiFetch('/api/publish-to-github', { method: 'POST' }).catch(() => {});
-    }
 
     showToast(
       data.id
@@ -1878,85 +1631,39 @@ export default function App() {
   const handleSaveForPublish = async () => {
     setIsSavingForPublish(true);
     try {
-      // 1. Upload any pending base64 photos to /api/upload-avatar
-      const updatedPhotos = { ...(familyState.photos || {}) };
-      const entries = Object.entries(updatedPhotos);
-
-      for (const [key, photoVal] of entries) {
-        if (typeof photoVal === 'string' && photoVal.startsWith('data:image/')) {
-          try {
-            const upRes = await mirrorSaveToAllEndpoints('/api/upload-avatar', { key, dataUrl: photoVal });
-            // Keep compact inline base64 (< 90KB) in state for instant cross-site rendering without 404s
-            if (photoVal.length >= 90000 && upRes && upRes.ok) {
-              const resData = await upRes.json();
-              if (resData?.url) {
-                updatedPhotos[key] = resData.url;
-              }
-            }
-          } catch (e) {
-            console.warn(`Failed to upload avatar ${key}:`, e);
-          }
-        }
-      }
-
-      // 1b. Upload any pending base64 archivalPhotos (Photos & Documents sections) to /api/upload-avatar
-      const updatedArchivalPhotos = [...(familyState.archivalPhotos || [])];
-      for (let i = 0; i < updatedArchivalPhotos.length; i++) {
-        const archItem = updatedArchivalPhotos[i];
-        if (archItem && typeof archItem.url === 'string' && archItem.url.startsWith('data:image/')) {
-          try {
-            const upRes = await mirrorSaveToAllEndpoints('/api/upload-avatar', { key: archItem.id, dataUrl: archItem.url });
-            if (upRes && upRes.ok) {
-              const resData = await upRes.json();
-              if (resData?.url) {
-                updatedArchivalPhotos[i] = { ...archItem, url: resData.url };
-              }
-            }
-          } catch (e) {
-            console.warn(`Failed to upload archival photo ${archItem.id}:`, e);
-          }
-        }
-      }
-
       const nextTs = getMonotonicTimestamp(familyState);
       lastImmediateSyncAtRef.current = Date.now();
       const stateToSave: FamilyState = {
         ...familyState,
         members: deduplicateMembers(familyState.members || []),
-        photos: updatedPhotos,
-        archivalPhotos: updatedArchivalPhotos,
+        photos: { ...(familyState.photos || {}) },
+        archivalPhotos: [...(familyState.archivalPhotos || [])],
         updatedAt: nextTs
       };
+
+      // 1. Write full tree data + all compressed Base64 photos directly to disk (src/data/initialTreeData.json & public/fardan_family_tree_backup.json)
+      const diskSaved = await saveTreeToDisk(stateToSave);
       saveStateToStorage(stateToSave);
 
-      // 2. Sync to Cloud Firestore instantly (both main state and archival_photos collection)
+      // 2. Sync to Cloud Firestore instantly
       try {
         await syncFamilyStateToCloud(stateToSave);
-        for (const archItem of updatedArchivalPhotos) {
+        for (const archItem of stateToSave.archivalPhotos || []) {
           await syncArchivalPhotoToCloud(archItem).catch(() => {});
         }
       } catch (cloudErr) {
         console.warn('Cloud sync on publish warning:', cloudErr);
       }
 
-      // 3. Commit full state to /api/save-family-data across all endpoints
-      const res = await mirrorSaveToAllEndpoints('/api/save-family-data', stateToSave);
+      // 3. Mirror full state to /api/save-family-data
+      await mirrorSaveToAllEndpoints('/api/save-family-data', stateToSave).catch(() => {});
 
-      if (res && res.ok) {
-        setFamilyState(stateToSave);
-        setHasUnsavedServerChanges(false);
-        try {
-          const pubRes = await mirrorSaveToAllEndpoints('/api/publish-to-github', {}).then(r => (r ? r.json() : null)).catch(() => null);
-          if (pubRes?.isPushed) {
-            showToast('تم اعتماد ونشر كافة التعديلات والصور إلى GitHub بنجاح! يتم الآن تحديث الموقع الرسمي alfardanfamily.com تلقائياً 🚀', 'success');
-          } else {
-            showToast(pubRes?.message || 'تم حفظ وتحديث الشجرة سحابياً بنجاح 🚀', 'success');
-          }
-        } catch {
-          showToast('تم حفظ ونشر البيانات والصور سحابياً بنجاح! 🚀', 'success');
-        }
+      setFamilyState(stateToSave);
+      setHasUnsavedServerChanges(false);
+
+      if (diskSaved) {
+        showToast('تمت كتابة كامل الشجرة والصور (Base64) في ملفات المشروع (initialTreeData.json) و Firebase بنجاح! يمكنك الآن الرفع عبر GitHub 🚀', 'success');
       } else {
-        mirrorSaveToAllEndpoints('/api/publish-to-github', {}).catch(() => {});
         showToast('تم حفظ ونشر البيانات والصور سحابياً بنجاح! 🚀', 'success');
       }
     } catch (err) {

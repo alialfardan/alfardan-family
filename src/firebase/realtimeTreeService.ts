@@ -1,7 +1,7 @@
 import { doc, collection, onSnapshot, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db, isFirestoreQuotaExhausted, tripFirestoreCircuitBreaker } from './config';
 import { FamilyState, ContactInfo, ArchivalPhoto, NotableFigure } from '../types/family';
-import { deduplicateMembers, resolveContactInfo, resolveNotableFigures, normalizeTimestamp, LEGACY_REMOVED_NOTABLE_IDS } from '../data/treeManager';
+import { deduplicateMembers, resolveContactInfo, resolveNotableFigures, normalizeTimestamp, LEGACY_REMOVED_NOTABLE_IDS, DEFAULT_FAMILY_DATA } from '../data/treeManager';
 
 const STATE_DOC_REF = doc(db, 'family_tree', 'state');
 const SETTINGS_CONTACT_REF = doc(db, 'settings', 'contactInfo');
@@ -397,15 +397,22 @@ export async function syncFamilyStateToCloud(state: FamilyState): Promise<void> 
 
       try {
         const safeContact = resolveContactInfo(targetState.contactInfo);
-        // Keep Firestore document compact by avoiding huge >120KB raw base64 strings while /api/upload-avatar converts them
+        // Baseline photos are already embedded as Base64 inside src/data/initialTreeData.json.
+        // Send modified/added/deleted Base64 photos in Firestore so family_tree/state stays well under the 1MB limit.
+        const baselinePhotos = DEFAULT_FAMILY_DATA?.photos || {};
         const compactPhotos: Record<string, string> = {};
+        let totalPhotoBytes = 0;
         for (const [k, v] of Object.entries(targetState.photos || {})) {
-          if (typeof v === 'string' && v.length < 120000) {
+          if (typeof v !== 'string') continue;
+          if (v === '') {
+            compactPhotos[k] = '';
+          } else if (v !== baselinePhotos[k] && v.length < 150000 && totalPhotoBytes + v.length < 550000) {
             compactPhotos[k] = v;
+            totalPhotoBytes += v.length;
           }
         }
 
-        // Also keep archivalPhotos in family_tree/state compact (<90KB per item) while syncing full items to archival_photos/{id}
+        // Keep archivalPhotos in family_tree/state compact (<90KB per item) while syncing full items to archival_photos/{id}
         const compactArchivalPhotos: ArchivalPhoto[] = [];
         for (const ap of targetState.archivalPhotos || []) {
           if (!ap || !ap.id) continue;
@@ -419,19 +426,16 @@ export async function syncFamilyStateToCloud(state: FamilyState): Promise<void> 
           }
         }
 
-        // Keep notableFigures in family_tree/state compact (<90KB per item) while syncing full items to notable_figures/{id}
+        // Keep notableFigures in family_tree/state compact while syncing full items to notable_figures/{id}
         const compactNotableFigures: NotableFigure[] = [];
         for (const nf of targetState.notableFigures || []) {
           if (!nf || !nf.id) continue;
-          const sanitizedManuscripts = (nf.manuscripts || []).map((ms) => {
-            if (ms && typeof ms.url === 'string' && ms.url.startsWith('data:image/') && ms.url.length >= 90000) {
-              return { ...ms, url: `/avatars/${ms.id}.jpg` };
-            }
-            return ms;
+          const sanitizedManuscripts = (nf.manuscripts || []).filter((ms) => {
+            return ms && typeof ms.url === 'string' && ms.url.length < 90000;
           });
           const sanitizedPhoto =
             nf.photo && nf.photo.startsWith('data:image/') && nf.photo.length >= 90000
-              ? `/avatars/${nf.id}.jpg`
+              ? undefined
               : nf.photo;
           compactNotableFigures.push({
             ...nf,
