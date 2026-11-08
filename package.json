@@ -1,0 +1,37 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && rm -rf node_modules/.vite node_modules/lucide-react/dist/umd node_modules/lucide-react/dist/cjs node_modules/@firebase/firestore/dist/intermediate node_modules/@firebase/firestore/dist/lite node_modules/@firebase/auth node_modules/@firebase/database node_modules/@firebase/ai node_modules/@firebase/storage node_modules/@firebase/data-connect node_modules/firebase/compat && find node_modules -type f -name '*.map' -delete 2>/dev/null; git reflog expire --expire=now --all 2>/dev/null; git gc --prune=now --quiet 2>/dev/null || true",
+    "start": "node server.ts",
+    "preview": "vite preview",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "canvas-confetti": "^1.9.4",
+    "d3": "^7.9.0",
+    "express": "^4.21.2",
+    "firebase": "^13.1.0",
+    "lucide-react": "^0.546.0",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/d3": "^7.4.3",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2"
+  }
+}

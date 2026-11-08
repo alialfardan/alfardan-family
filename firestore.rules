@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /family_tree/{docId} {
+      allow read, write: if true;
+    }
+    match /archival_photos/{docId} {
+      allow read, write: if true;
+    }
+    match /notable_figures/{docId} {
+      allow read, write: if true;
+    }
+    match /settings/{docId} {
+      allow read, write: if true;
+    }
+    match /site_stats/{docId} {
+      allow read, write: if true;
+    }
+    match /siteStats/{docId} {
+      allow read, write: if true;
+    }
+    match /visitors/{docId} {
+      allow read, write: if true;
+    }
+    match /notifications/{docId} {
+      allow read, write: if true;
+    }
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
