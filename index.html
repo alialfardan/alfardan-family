@@ -1,11 +1,25 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
   <head>
-    <script async src="https://www.googletagmanager.com/gtm.js?id=GTM-M3CQ9HDJ"></script>
     <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
+      (function () {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function (regs) {
+              for (var i = 0; i < regs.length; i++) {
+                regs[i].unregister();
+              }
+            });
+          }
+          if ('caches' in window && window.caches) {
+            window.caches.keys().then(function (keys) {
+              for (var j = 0; j < keys.length; j++) {
+                window.caches.delete(keys[j]);
+              }
+            });
+          }
+        } catch (e) {}
+      })();
     </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -43,16 +57,11 @@
     />
     <meta name="twitter:image" content="https://alfardanfamily.com/logo.png" />
     
-    <!-- أيقونة وشعار الموقع في المتصفح وقوقل وتطبيق الجوال PWA -->
+    <!-- أيقونة وشعار الموقع في المتصفح وقوقل -->
     <link rel="icon" type="image/png" href="https://alfardanfamily.com/logo.png" />
     <link rel="shortcut icon" href="https://alfardanfamily.com/logo.png" />
     <link rel="apple-touch-icon" href="/logo.png" />
-    <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#064e3b" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="عائلة الفردان" />
     
     <!-- Schema.org Structured Data (JSON-LD) for Search Engines -->
     <script type="application/ld+json">

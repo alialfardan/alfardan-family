@@ -6,22 +6,10 @@ export type NotificationPermissionState = NotificationPermission | 'unsupported'
 const NOTIFICATIONS_COLLECTION = collection(db, 'notifications');
 
 /**
- * Check if browser supports Web Notifications and ServiceWorker
+ * Check if browser supports Web Notifications
  */
 export function isNotificationSupported(): boolean {
-  return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator;
-}
-
-/**
- * Check if the user is running the app as an installed PWA (Standalone)
- */
-export function isStandaloneApp(): boolean {
-  if (typeof window === 'undefined') return false;
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true ||
-    document.referrer.includes('android-app://')
-  );
+  return typeof window !== 'undefined' && 'Notification' in window;
 }
 
 /**
@@ -35,35 +23,17 @@ export function getNotificationPermission(): NotificationPermissionState {
 }
 
 /**
- * Show a native system notification via the active ServiceWorker
+ * Show a native system notification without ServiceWorker
  */
 export async function showSystemNotification(
   title: string,
-  body: string,
-  url: string = '/'
+  body: string
 ): Promise<boolean> {
   if (!isNotificationSupported() || Notification.permission !== 'granted') {
     return false;
   }
 
   try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && reg.showNotification) {
-        await reg.showNotification(title, {
-          body,
-          icon: '/logo.png',
-          badge: '/logo.png',
-          dir: 'rtl',
-          lang: 'ar',
-          vibrate: [200, 100, 200],
-          data: { url }
-        } as NotificationOptions);
-        return true;
-      }
-    }
-
-    // Fallback if ServiceWorker showNotification is unavailable
     new Notification(title, {
       body,
       icon: '/logo.png',

@@ -49,21 +49,6 @@
           "description": "Update timestamp"
         }
       }
-    },
-    "VisitorCounter": {
-      "title": "VisitorCounter",
-      "description": "Tracks total cloud visits to the family tree website",
-      "type": "object",
-      "properties": {
-        "count": {
-          "type": "number",
-          "description": "Total number of site visits"
-        },
-        "updatedAt": {
-          "type": "number",
-          "description": "Timestamp of last visit increment"
-        }
-      }
     }
   },
   "firestore": {
@@ -74,22 +59,6 @@
     "/archival_photos/{docId}": {
       "schema": "ArchivalPhoto",
       "description": "Holds individual archival photos and documents for instant cross-domain sync"
-    },
-    "/settings/{docId}": {
-      "schema": "VisitorCounter",
-      "description": "Holds site-wide settings and real-time visitor counter"
-    },
-    "/siteStats/{docId}": {
-      "schema": "VisitorCounter",
-      "description": "Holds real-time visitor counter under siteStats/visits"
-    },
-    "/site_stats/{docId}": {
-      "schema": "VisitorCounter",
-      "description": "Holds real-time site statistics and visit counter"
-    },
-    "/visitors/{docId}": {
-      "schema": "VisitorCounter",
-      "description": "Holds real-time visitor counter under visitors/count"
     }
   }
 }

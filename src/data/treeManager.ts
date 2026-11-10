@@ -341,7 +341,6 @@ const DEAD_PHOTO_KEYS = new Set([
 export function cleanPhotosMap(photos?: Record<string, string>): Record<string, string> {
   const clean: Record<string, string> = {};
   if (!photos || typeof photos !== 'object') return clean;
-  const defaultPhotos = DEFAULT_FAMILY_DATA?.photos || {};
   for (const [k, v] of Object.entries(photos)) {
     if (v === '') {
       // Explicit removal marker for a valid person key
@@ -349,16 +348,7 @@ export function cleanPhotosMap(photos?: Record<string, string>): Record<string, 
         clean[k] = '';
       }
     } else if (isValidPhotoEntry(k, v)) {
-      const trimmed = v.trim();
-      if (trimmed.startsWith('/avatars/')) {
-        // Resolve any legacy /avatars/ file path to its embedded Base64 from initialTreeData.json
-        const fallbackB64 = defaultPhotos[k];
-        if (typeof fallbackB64 === 'string' && fallbackB64.startsWith('data:image/')) {
-          clean[k] = fallbackB64;
-        }
-      } else {
-        clean[k] = trimmed;
-      }
+      clean[k] = v.trim();
     }
   }
   return clean;
@@ -560,24 +550,11 @@ export function mergeFamilyStates(
     forceIncomingAuthoritative
   );
 
-  // Embedded Base64 Photo Merge:
-  // Start with DEFAULT_FAMILY_DATA.photos (from src/data/initialTreeData.json), layer customBackups and base.photos,
-  // and merge incoming updates while honoring explicit '' deletions and always preferring Base64 over /avatars/ paths.
+  // Merge photos preferring clean /avatars/[id].jpg?v=[timestamp] paths while supporting newly uploaded Base64 before disk extraction
   const rawBasePhotos = cleanPhotosMap(base.photos);
   const rawIncPhotos = cleanPhotosMap(incoming.photos);
-  const customBackups = loadCustomAvatarsBackup();
   const baselinePhotos = cleanPhotosMap(DEFAULT_FAMILY_DATA.photos);
-  const mergedPhotos: Record<string, string> = { ...baselinePhotos, ...customBackups, ...rawBasePhotos };
-
-  // Harvest photo fields attached directly to member objects
-  for (const m of [...(base.members || []), ...(incoming.members || [])]) {
-    if (!m) continue;
-    const mKey = 'a' + m.id;
-    const mPhoto = (m as any).photo || (m as any).avatar || (m as any).image || (m as any).photoUrl;
-    if (typeof mPhoto === 'string' && mPhoto.trim().startsWith('data:image/')) {
-      mergedPhotos[mKey] = mPhoto.trim();
-    }
-  }
+  const mergedPhotos: Record<string, string> = { ...baselinePhotos, ...rawBasePhotos };
 
   for (const [k, incVal] of Object.entries(rawIncPhotos)) {
     if (incVal === '') {
@@ -593,14 +570,10 @@ export function mergeFamilyStates(
     const baseVal = mergedPhotos[k];
     if (!baseVal || !baseVal.trim()) {
       mergedPhotos[k] = cleanIncVal;
-    } else if (cleanIncVal.startsWith('data:image/')) {
-      if (incomingIsNewer || forceIncomingAuthoritative || !baseVal.startsWith('data:image/')) {
+    } else if (cleanIncVal.startsWith('/avatars/')) {
+      if (incomingIsNewer || forceIncomingAuthoritative || baseVal.startsWith('data:image/')) {
         mergedPhotos[k] = cleanIncVal;
-        saveCustomAvatarBackup(k, cleanIncVal);
       }
-    } else if (baseVal.startsWith('data:image/')) {
-      // Always retain the embedded Base64 photo over any non-Base64 string
-      mergedPhotos[k] = baseVal;
     } else if (forceIncomingAuthoritative || incomingIsNewer) {
       mergedPhotos[k] = cleanIncVal;
     }
@@ -746,11 +719,9 @@ export function loadSavedState(): FamilyState {
       ? DEFAULT_FAMILY_DATA.archivalPhotos
       : DEFAULT_ARCHIVAL_PHOTOS;
 
-  const customBackups = loadCustomAvatarsBackup();
-
   const baseDefault: FamilyState = {
     ...DEFAULT_FAMILY_DATA,
-    photos: { ...cleanPhotosMap(DEFAULT_FAMILY_DATA.photos), ...customBackups },
+    photos: cleanPhotosMap(DEFAULT_FAMILY_DATA.photos),
     members: deduplicateMembers(DEFAULT_FAMILY_DATA.members || []),
     archivalPhotos: initialArchival,
     notableFigures: resolveNotableFigures(DEFAULT_FAMILY_DATA.notableFigures),
@@ -768,14 +739,6 @@ export function loadSavedState(): FamilyState {
     }
     const parsed = JSON.parse(raw);
     if (parsed && Array.isArray(parsed.members)) {
-      if (parsed.photos && typeof parsed.photos === 'object') {
-        for (const [k, v] of Object.entries(parsed.photos)) {
-          if (typeof v === 'string' && v.startsWith('data:image/')) {
-            saveCustomAvatarBackup(k, v);
-          }
-        }
-      }
-      // Read data from src/data/initialTreeData.json (baseDefault) and merge any newer updates on top
       return mergeFamilyStates(baseDefault, parsed);
     }
   } catch (err) {
@@ -786,8 +749,9 @@ export function loadSavedState(): FamilyState {
 
 /**
  * Physical Disk-Write Bridge:
- * Immediately writes the complete tree data (all 1380+ members & Base64 photos) to
- * src/data/initialTreeData.json and public/fardan_family_tree_backup.json on disk via /__save_tree_to_disk.
+ * Immediately writes the complete tree data to src/data/initialTreeData.json and
+ * public/fardan_family_tree_backup.json on disk via /__save_tree_to_disk, while
+ * extracting any Base64 photos into physical .jpg files inside public/avatars/.
  */
 export async function saveTreeToDisk(state: FamilyState): Promise<boolean> {
   if (typeof window === 'undefined') return false;
@@ -817,23 +781,13 @@ export function saveStateToStorage(state: FamilyState): void {
   try {
     if (!state || typeof window === 'undefined') return;
 
-    // Immediately trigger physical disk write so src/data/initialTreeData.json is updated on every state save
-    saveTreeToDisk(state).catch(() => {});
-
-    // Keep delta/modified Base64 photos in localStorage while baseline photos are already embedded in initialTreeData.json
-    const baselinePhotos = DEFAULT_FAMILY_DATA.photos || {};
     const compactPhotos: Record<string, string> = {};
     if (state.photos && typeof state.photos === 'object') {
       for (const [k, v] of Object.entries(state.photos)) {
         if (typeof v === 'string') {
-          if (v.startsWith('data:image/')) {
-            if (v !== baselinePhotos[k] && v.length < 150000) {
-              saveCustomAvatarBackup(k, v);
-              compactPhotos[k] = v;
-            } else if (v.length < 40000) {
-              compactPhotos[k] = v;
-            }
-          } else if (!v.startsWith('/avatars/')) {
+          if (v === '' || v.startsWith('/avatars/')) {
+            compactPhotos[k] = v;
+          } else if (v.startsWith('data:image/') && v.length < 150000) {
             compactPhotos[k] = v;
           }
         }
@@ -862,28 +816,7 @@ export function saveStateToStorage(state: FamilyState): void {
             archivalPhotos: []
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(minimalState));
-        } catch {
-          try {
-            const deltaOnlyPhotos: Record<string, string> = {};
-            for (const [k, v] of Object.entries(compactPhotos)) {
-              if (v !== baselinePhotos[k]) {
-                deltaOnlyPhotos[k] = v;
-              }
-            }
-            const ultraCompact: FamilyState = {
-              members: stateToSave.members,
-              photos: deltaOnlyPhotos,
-              over: stateToSave.over,
-              removed: stateToSave.removed,
-              spouses: stateToSave.spouses,
-              mothers: stateToSave.mothers,
-              contactInfo: stateToSave.contactInfo,
-              archivalPhotos: [],
-              updatedAt: stateToSave.updatedAt
-            };
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(ultraCompact));
-          } catch {}
-        }
+        } catch {}
       }
     }
   } catch {

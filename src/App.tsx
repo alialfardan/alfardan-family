@@ -51,20 +51,15 @@ import { AddEditArchivalPhotoModal } from './components/AddEditArchivalPhotoModa
 import { FaceCropModal } from './components/FaceCropModal';
 import { AvatarGalleryModal } from './components/AvatarGalleryModal';
 import { ContactCreditsModal } from './components/ContactCreditsModal';
-import { usePWAInstall } from './pwa/usePWAInstall';
 import { apiFetch, mirrorSaveToAllEndpoints } from './utils/apiClient';
 import { fastCompressAvatar } from './utils/imageDownload';
-import { SmartInstallBanner } from './components/SmartInstallBanner';
-import { IOSInstallModal, ManualInstallModal } from './components/PWAInstallModals';
 import {
-  isStandaloneApp,
   getNotificationPermission,
   requestNotificationPermission,
   listenToCloudNotifications,
   sendCloudNotification,
   NotificationPermissionState
 } from './services/notificationService';
-import { NotificationGuideModal } from './components/NotificationGuideModal';
 import { WelcomeDisclaimerModal } from './components/WelcomeDisclaimerModal';
 import { CheckCircle2 } from 'lucide-react';
 
@@ -87,20 +82,9 @@ export default function App() {
 
   // Notification State
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => getNotificationPermission());
-  const [isNotifGuideOpen, setIsNotifGuideOpen] = useState(false);
 
   // Welcome & Disclaimer Modal State (In-memory only, shown on every load/visit)
   const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState<boolean>(true);
-
-  // PWA Install Manager
-  const {
-    isInstalled: isPWAInstalled,
-    showIOSModal,
-    setShowIOSModal,
-    showManualModal,
-    setShowManualModal,
-    triggerInstall: handlePWAInstall
-  } = usePWAInstall();
 
   // Avatar Gallery Modal State
   const [avatarGalleryModal, setAvatarGalleryModal] = useState<{
@@ -143,55 +127,9 @@ export default function App() {
     return () => window.removeEventListener('error', handleImageError, true);
   }, []);
 
-  // Clear stale Service Workers & CacheStorage on load, and ensure any Base64 photos in browser storage are anchored to disk
+  // Clear stale Service Workers & CacheStorage on load
   useEffect(() => {
     unregisterServiceWorkersAndClearCaches();
-
-    let isCancelled = false;
-    async function syncBrowserBase64AvatarsToDisk() {
-      try {
-        const customBackups = loadCustomAvatarsBackup();
-        const recoveredBase64: Record<string, string> = {};
-        const currentPhotos = familyState.photos || {};
-
-        for (const [k, v] of Object.entries(customBackups)) {
-          if (isValidPhotoEntry(k, v) && v.startsWith('data:image/') && currentPhotos[k] !== '') {
-            if (!currentPhotos[k] || !currentPhotos[k].startsWith('data:image/')) {
-              recoveredBase64[k] = v.trim();
-            }
-          }
-        }
-
-        if (Object.keys(recoveredBase64).length > 0 && !isCancelled) {
-          lastImmediateSyncAtRef.current = Date.now();
-          setFamilyState(prev => {
-            const nextTs = getMonotonicTimestamp(prev);
-            const nextState: FamilyState = {
-              ...prev,
-              photos: {
-                ...(prev.photos || {}),
-                ...recoveredBase64
-              },
-              updatedAt: nextTs
-            };
-            saveStateToStorage(nextState);
-            saveTreeToDisk(nextState).catch(() => {});
-            syncFamilyStateToCloud(nextState).catch(() => {});
-            return nextState;
-          });
-        } else {
-          // Ensure initial disk files are in sync with current loaded state
-          saveTreeToDisk(familyState).catch(() => {});
-        }
-      } catch (err) {
-        console.warn('Avatar sync notice:', err);
-      }
-    }
-
-    syncBrowserBase64AvatarsToDisk();
-    return () => {
-      isCancelled = true;
-    };
   }, []);
 
   // Sync from server (/api/family-data) AND GitHub Raw live stream so both AI Studio and alfardanfamily.com update instantaneously
@@ -583,14 +521,8 @@ export default function App() {
     return () => unsubscribe();
   }, [showToast]);
 
-  // Handler to enable notifications with standalone PWA verification
+  // Handler to enable notifications
   const handleEnableNotifications = useCallback(async () => {
-    const standalone = isStandaloneApp();
-    if (!standalone) {
-      setIsNotifGuideOpen(true);
-      return;
-    }
-
     const res = await requestNotificationPermission();
     setNotificationPermission(res);
     if (res === 'granted') {
@@ -722,9 +654,14 @@ export default function App() {
       const newId = 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const newMemberKey = 'a' + newId;
       const isBase64Photo = Boolean(data.photo && data.photo.startsWith('data:image/'));
+      const cleanAvatarPath = isBase64Photo ? `/avatars/${newMemberKey}.jpg?v=${Date.now()}` : (data.photo || undefined);
 
       if (isBase64Photo && data.photo) {
-        saveCustomAvatarBackup(newMemberKey, data.photo);
+        apiFetch('/api/upload-avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: newMemberKey, dataUrl: data.photo })
+        }).catch(() => {});
       }
 
       lastImmediateSyncAtRef.current = Date.now();
@@ -753,7 +690,10 @@ export default function App() {
         };
         saveStateToStorage(nextState);
         persistAndSyncImmediately(nextState);
-        return nextState;
+        return {
+          ...nextState,
+          photos: cleanAvatarPath ? { ...prev.photos, [newMemberKey]: cleanAvatarPath } : prev.photos
+        };
       });
 
       // Expand parent and select new person
@@ -773,9 +713,14 @@ export default function App() {
         ? data.photo.trim()
         : existingPhoto;
       const isBase64Photo = Boolean(finalPhoto && finalPhoto.startsWith('data:image/'));
+      const cleanAvatarPath = isBase64Photo ? `/avatars/${key}.jpg?v=${Date.now()}` : finalPhoto;
 
       if (isBase64Photo) {
-        saveCustomAvatarBackup(key, finalPhoto);
+        apiFetch('/api/upload-avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, dataUrl: finalPhoto })
+        }).catch(() => {});
       }
 
       lastImmediateSyncAtRef.current = Date.now();
@@ -816,7 +761,13 @@ export default function App() {
           };
           saveStateToStorage(nextState);
           persistAndSyncImmediately(nextState);
-          return nextState;
+          return {
+            ...nextState,
+            photos: {
+              ...prev.photos,
+              ...(cleanAvatarPath ? { [key]: cleanAvatarPath } : {})
+            }
+          };
         });
       } else {
         // Original member override
@@ -850,7 +801,13 @@ export default function App() {
           };
           saveStateToStorage(nextState);
           persistAndSyncImmediately(nextState);
-          return nextState;
+          return {
+            ...nextState,
+            photos: {
+              ...prev.photos,
+              ...(cleanAvatarPath ? { [key]: cleanAvatarPath } : {})
+            }
+          };
         });
       }
 
@@ -1067,25 +1024,35 @@ export default function App() {
   const handleFaceCropComplete = async (croppedDataUrl: string) => {
     if (!faceCropModal.targetKey) return;
     const key = faceCropModal.targetKey;
+    const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
 
-    // 1. Permanently anchor compressed 200x200 @ 0.7 base64 image in state + initialTreeData.json + Firebase immediately
-    saveCustomAvatarBackup(key, croppedDataUrl);
+    // 1. Immediately write physical .jpg file to public/avatars/[key].jpg on disk
+    apiFetch('/api/upload-avatar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, dataUrl: croppedDataUrl })
+    }).catch(() => {});
+
     lastImmediateSyncAtRef.current = Date.now();
 
     setFamilyState(prev => {
       const nextTs = getMonotonicTimestamp(prev);
-      const nextState: FamilyState = {
+      const nextStateWithBase64: FamilyState = {
         ...prev,
         photos: { ...(prev.photos || {}), [key]: croppedDataUrl },
         updatedAt: nextTs
       };
-      saveStateToStorage(nextState);
-      persistAndSyncImmediately(nextState);
-      return nextState;
+      persistAndSyncImmediately(nextStateWithBase64);
+      const nextCleanState: FamilyState = {
+        ...nextStateWithBase64,
+        photos: { ...(prev.photos || {}), [key]: cleanAvatarPath }
+      };
+      saveStateToStorage(nextCleanState);
+      return nextCleanState;
     });
 
     setFaceCropModal({ isOpen: false, imageSrc: '', targetKey: '', memberName: '' });
-    showToast('تم حفظ الصورة كـ Base64 مضغوطة في ملفات المشروع و Firebase فوراً 🌿', 'success');
+    showToast('تم حفظ الصورة في مجلد public/avatars/ وتحديث ملفات المشروع و Firebase فوراً 🌿', 'success');
   };
 
   // Delete Member (إلغاء / حذف اسم من الشجرة مع تحديث فوري على Firebase و GitHub)
@@ -1641,7 +1608,7 @@ export default function App() {
         updatedAt: nextTs
       };
 
-      // 1. Write full tree data + all compressed Base64 photos directly to disk (src/data/initialTreeData.json & public/fardan_family_tree_backup.json)
+      // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update src/data/initialTreeData.json & public/fardan_family_tree_backup.json
       const diskSaved = await saveTreeToDisk(stateToSave);
       saveStateToStorage(stateToSave);
 
@@ -1662,7 +1629,7 @@ export default function App() {
       setHasUnsavedServerChanges(false);
 
       if (diskSaved) {
-        showToast('تمت كتابة كامل الشجرة والصور (Base64) في ملفات المشروع (initialTreeData.json) و Firebase بنجاح! يمكنك الآن الرفع عبر GitHub 🚀', 'success');
+        showToast('تم تحديث ملفات الصور في public/avatars/ وملفات المشروع (initialTreeData.json) و Firebase بنجاح! يمكنك الآن عمل Commit & Push 🚀', 'success');
       } else {
         showToast('تم حفظ ونشر البيانات والصور سحابياً بنجاح! 🚀', 'success');
       }
@@ -1696,24 +1663,33 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target?.result as string);
+        const rawParsed = JSON.parse(event.target?.result as string);
+        const parsed = rawParsed?.familyData ? rawParsed.familyData : rawParsed;
         if (parsed && Array.isArray(parsed.members)) {
-          setFamilyState(prev => ({
-            members: parsed.members || [],
-            photos: parsed.photos || {},
-            over: parsed.over || {},
-            removed: parsed.removed || [],
-            archivalPhotos: Array.isArray(parsed.archivalPhotos) ? parsed.archivalPhotos : (prev.archivalPhotos || []),
-            spouses: parsed.spouses || prev.spouses || {},
-            mothers: parsed.mothers || prev.mothers || {}
-          }));
+          setFamilyState(prev => {
+            const nextTs = getMonotonicTimestamp(prev);
+            const nextState: FamilyState = {
+              members: deduplicateMembers(parsed.members || []),
+              photos: parsed.photos || prev.photos || {},
+              over: parsed.over || prev.over || {},
+              removed: parsed.removed || prev.removed || [],
+              archivalPhotos: Array.isArray(parsed.archivalPhotos) ? parsed.archivalPhotos : (prev.archivalPhotos || []),
+              notableFigures: Array.isArray(parsed.notableFigures) ? resolveNotableFigures(parsed.notableFigures) : prev.notableFigures,
+              spouses: parsed.spouses || prev.spouses || {},
+              mothers: parsed.mothers || prev.mothers || {},
+              contactInfo: parsed.contactInfo ? resolveContactInfo(parsed.contactInfo) : prev.contactInfo,
+              updatedAt: nextTs
+            };
+            persistAndSyncImmediately(nextState);
+            return nextState;
+          });
           setIsBackupModalOpen(false);
-          showToast('تم استيراد النسخة الاحتياطية بنجاح');
+          showToast('تم استيراد النسخة الاحتياطية وحفظ الصور والبيانات في ملفات المشروع و Firebase بنجاح');
         } else {
-          alert('الملف المحدد غير صالح أو لا يحتوي على بنية شجرة عائلة الفردان');
+          showToast('الملف المحدد غير صالح أو لا يحتوي على بنية شجرة عائلة الفردان', 'info');
         }
       } catch (err) {
-        alert('تعذر قراءة ملف النسخة الاحتياطية');
+        showToast('تعذر قراءة ملف النسخة الاحتياطية', 'info');
       }
     };
     reader.readAsText(file);
@@ -1745,12 +1721,6 @@ export default function App() {
         isSavingForPublish={isSavingForPublish}
         isNotificationsGranted={notificationPermission === 'granted'}
         onEnableNotifications={handleEnableNotifications}
-      />
-
-      {/* Smart Welcome Install Banner for PWA */}
-      <SmartInstallBanner
-        onInstall={handlePWAInstall}
-        isInstalled={isPWAInstalled}
       />
 
       {/* Main View Area - Margin right on all screens to accommodate right-side navigation rail */}
@@ -2015,8 +1985,6 @@ export default function App() {
           onSaveContactInfo={handleUpdateContactInfo}
           isAuthorized={isAuthorized}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
-          onInstallPWA={handlePWAInstall}
-          isPWAInstalled={isPWAInstalled}
           isNotificationsGranted={notificationPermission === 'granted'}
           onEnableNotifications={handleEnableNotifications}
           onSendNotification={handleSendNotification}
@@ -2091,7 +2059,7 @@ export default function App() {
         />
       )}
 
-      {/* Avatar Gallery Modal (Choose from 103 GitHub uploaded avatars) */}
+      {/* Avatar Gallery Modal (Choose from GitHub uploaded avatars) */}
       <AvatarGalleryModal
         isOpen={avatarGalleryModal.isOpen}
         onClose={() => setAvatarGalleryModal(prev => ({ ...prev, isOpen: false }))}
@@ -2110,25 +2078,6 @@ export default function App() {
           <span>{toast.message}</span>
         </div>
       )}
-
-      {/* PWA iOS Safari Installation Guide Modal */}
-      <IOSInstallModal
-        isOpen={showIOSModal}
-        onClose={() => setShowIOSModal(false)}
-      />
-
-      {/* PWA Android / Desktop Manual Guide Modal */}
-      <ManualInstallModal
-        isOpen={showManualModal}
-        onClose={() => setShowManualModal(false)}
-      />
-
-      {/* Notification Guide Modal for Browser Visitors */}
-      <NotificationGuideModal
-        isOpen={isNotifGuideOpen}
-        onClose={() => setIsNotifGuideOpen(false)}
-        onInstallApp={handlePWAInstall}
-      />
 
       {/* Welcome & Disclaimer Modal (Centred modal with backdrop-blur, appears on every session/visit) */}
       <WelcomeDisclaimerModal

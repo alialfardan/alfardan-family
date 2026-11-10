@@ -4,6 +4,53 @@ import fs from 'fs';
 import path from 'path';
 import {defineConfig, Plugin} from 'vite';
 
+function extractBase64ToAvatarFile(
+  key: string,
+  val: string,
+  avatarsDir: string,
+  vStamp: number
+): string {
+  const trimmed = val.trim();
+  const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!cleanKey) return trimmed;
+
+  if (trimmed.startsWith('data:image/')) {
+    const match = trimmed.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+    const rawBase64 = match ? match[1] : trimmed.split(',')[1];
+    if (rawBase64) {
+      if (!fs.existsSync(avatarsDir)) {
+        fs.mkdirSync(avatarsDir, { recursive: true });
+      }
+      const filename = `${cleanKey}.jpg`;
+      const filePath = path.join(avatarsDir, filename);
+      fs.writeFileSync(filePath, Buffer.from(rawBase64, 'base64'));
+      return `/avatars/${filename}?v=${vStamp}`;
+    }
+  }
+
+  if (trimmed.startsWith('/avatars/')) {
+    const cleanFile = trimmed.split('?')[0].replace(/^\/avatars\//, '');
+    return trimmed.includes('?v=') ? trimmed : `/avatars/${cleanFile}?v=${vStamp}`;
+  }
+
+  return trimmed;
+}
+
+function updateAvatarsManifestOnDisk(rootDir: string, avatarsDir: string, vStamp: number): void {
+  try {
+    if (!fs.existsSync(avatarsDir)) return;
+    const files = fs.readdirSync(avatarsDir)
+      .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f))
+      .sort((a, b) => a.localeCompare(b));
+    const manifest = files.map((filename) => ({
+      filename,
+      url: `/avatars/${filename}?v=${vStamp}`,
+    }));
+    const manifestPath = path.resolve(rootDir, 'public/avatars-manifest.json');
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+  } catch {}
+}
+
 function saveTreeToDiskPlugin(): Plugin {
   return {
     name: 'save-tree-to-disk-bridge',
@@ -26,6 +73,10 @@ function saveTreeToDiskPlugin(): Plugin {
             const publicBackupPath = path.resolve(rootDir, 'public/fardan_family_tree_backup.json');
             const avatarsDir = path.resolve(rootDir, 'public/avatars');
 
+            if (!fs.existsSync(avatarsDir)) {
+              fs.mkdirSync(avatarsDir, { recursive: true });
+            }
+
             let existingWrapper: any = { treeData: {}, familyData: {} };
             if (fs.existsSync(initialTreePath)) {
               try {
@@ -34,31 +85,47 @@ function saveTreeToDiskPlugin(): Plugin {
             }
 
             const existingFamilyData = existingWrapper.familyData || {};
-            const mergedPhotos: Record<string, string> = {
+            const vStamp = incomingFamilyData.updatedAt || Date.now();
+
+            const rawMergedPhotos: Record<string, string> = {
               ...(existingFamilyData.photos || {}),
               ...(incomingFamilyData.photos || {})
             };
 
-            // Convert any /avatars/ path into inline Base64 and honor explicit '' deletions
-            for (const [k, val] of Object.entries(mergedPhotos)) {
+            const cleanPhotos: Record<string, string> = {};
+            for (const [k, val] of Object.entries(rawMergedPhotos)) {
               if (!val || typeof val !== 'string' || !val.trim()) {
-                delete mergedPhotos[k];
                 continue;
               }
-              const trimmed = val.trim();
-              if (trimmed.startsWith('/avatars/')) {
-                const cleanFile = trimmed.split('?')[0].replace(/^\/avatars\//, '');
-                const avatarFilePath = path.join(avatarsDir, cleanFile);
-                if (fs.existsSync(avatarFilePath)) {
-                  const buf = fs.readFileSync(avatarFilePath);
-                  mergedPhotos[k] = `data:image/jpeg;base64,${buf.toString('base64')}`;
-                } else {
-                  delete mergedPhotos[k];
-                }
-              } else {
-                mergedPhotos[k] = trimmed;
-              }
+              cleanPhotos[k] = extractBase64ToAvatarFile(k, val, avatarsDir, vStamp);
             }
+
+            const rawArchival = Array.isArray(incomingFamilyData.archivalPhotos) && incomingFamilyData.archivalPhotos.length > 0
+              ? incomingFamilyData.archivalPhotos
+              : (existingFamilyData.archivalPhotos || []);
+            const processedArchival = rawArchival.map((ap: any) => {
+              if (ap && ap.id && typeof ap.url === 'string' && ap.url.startsWith('data:image/')) {
+                return {
+                  ...ap,
+                  url: extractBase64ToAvatarFile(ap.id, ap.url, avatarsDir, vStamp),
+                };
+              }
+              return ap;
+            });
+
+            const rawNotables = Array.isArray(incomingFamilyData.notableFigures) && incomingFamilyData.notableFigures.length > 0
+              ? incomingFamilyData.notableFigures
+              : (existingFamilyData.notableFigures || []);
+            const processedNotables = rawNotables.map((nf: any) => {
+              if (!nf || !nf.id) return nf;
+              const nextPhoto = typeof nf.photo === 'string' && nf.photo.startsWith('data:image/')
+                ? extractBase64ToAvatarFile(nf.id, nf.photo, avatarsDir, vStamp)
+                : nf.photo;
+              return {
+                ...nf,
+                photo: nextPhoto,
+              };
+            });
 
             const updatedFamilyData = {
               ...existingFamilyData,
@@ -66,7 +133,7 @@ function saveTreeToDiskPlugin(): Plugin {
               members: Array.isArray(incomingFamilyData.members) && incomingFamilyData.members.length > 0
                 ? incomingFamilyData.members
                 : (existingFamilyData.members || []),
-              photos: mergedPhotos,
+              photos: cleanPhotos,
               over: {
                 ...(existingFamilyData.over || {}),
                 ...(incomingFamilyData.over || {})
@@ -82,14 +149,10 @@ function saveTreeToDiskPlugin(): Plugin {
                 ...(existingFamilyData.mothers || {}),
                 ...(incomingFamilyData.mothers || {})
               },
-              archivalPhotos: Array.isArray(incomingFamilyData.archivalPhotos) && incomingFamilyData.archivalPhotos.length > 0
-                ? incomingFamilyData.archivalPhotos
-                : (existingFamilyData.archivalPhotos || []),
-              notableFigures: Array.isArray(incomingFamilyData.notableFigures) && incomingFamilyData.notableFigures.length > 0
-                ? incomingFamilyData.notableFigures
-                : (existingFamilyData.notableFigures || []),
+              archivalPhotos: processedArchival,
+              notableFigures: processedNotables,
               contactInfo: incomingFamilyData.contactInfo || existingFamilyData.contactInfo,
-              updatedAt: incomingFamilyData.updatedAt || Date.now()
+              updatedAt: vStamp
             };
 
             const fullTreePayload = {
@@ -101,10 +164,15 @@ function saveTreeToDiskPlugin(): Plugin {
             fs.writeFileSync(initialTreePath, serializedFull, 'utf-8');
             fs.writeFileSync(backupTreePath, serializedFull, 'utf-8');
             fs.writeFileSync(publicBackupPath, JSON.stringify(updatedFamilyData, null, 2), 'utf-8');
+            updateAvatarsManifestOnDisk(rootDir, avatarsDir, vStamp);
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, updatedAt: updatedFamilyData.updatedAt }));
+            res.end(JSON.stringify({
+              success: true,
+              updatedAt: updatedFamilyData.updatedAt,
+              photos: cleanPhotos
+            }));
           } catch (err: any) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');

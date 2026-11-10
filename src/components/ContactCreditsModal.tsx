@@ -33,8 +33,6 @@ interface ContactCreditsModalProps {
   onSaveContactInfo?: (info: ContactInfo) => void;
   isAuthorized: boolean;
   onOpenAuthModal?: () => void;
-  onInstallPWA?: () => void;
-  isPWAInstalled?: boolean;
   isNotificationsGranted?: boolean;
   onEnableNotifications?: () => void;
   onSendNotification?: (title: string, body: string) => Promise<{ success: boolean; error?: string }>;
@@ -48,8 +46,6 @@ export const ContactCreditsModal: React.FC<ContactCreditsModalProps> = ({
   onSaveContactInfo,
   isAuthorized,
   onOpenAuthModal,
-  onInstallPWA,
-  isPWAInstalled,
   isNotificationsGranted = false,
   onEnableNotifications,
   onSendNotification,
@@ -681,50 +677,8 @@ export const ContactCreditsModal: React.FC<ContactCreditsModalProps> = ({
                 </div>
               </div>
 
-              {/* 4. Bottom Section: PWA App Install Card & Push Notifications Card */}
+              {/* 4. Bottom Section: Push Notifications Card */}
               <div className="space-y-4 pt-3 border-t border-slate-200">
-                {/* PWA App Install Card */}
-                <div className="bg-gradient-to-r from-emerald-950 via-emerald-900 to-slate-900 text-white rounded-2xl p-4 sm:p-5 border border-amber-400/40 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3.5 w-full sm:w-auto">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shadow-md flex-shrink-0">
-                      <div className="w-full h-full rounded-[14px] bg-slate-900 flex items-center justify-center text-amber-300">
-                        <Smartphone className="w-6 h-6" />
-                      </div>
-                    </div>
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs sm:text-sm font-bold font-['Alexandria'] text-white">
-                          📲 تثبيت تطبيق الشجرة على الجوال (PWA)
-                        </h4>
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                          PWA
-                        </span>
-                      </div>
-                      <p className="text-xs text-emerald-100/90 leading-relaxed">
-                        ثبّت المنصة كتطبيق مباشر على شاشة هاتفك لسهولة التصفح والوصول السريع
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="w-full sm:w-auto flex-shrink-0">
-                    {isPWAInstalled ? (
-                      <div className="flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl bg-emerald-800/80 border border-emerald-400/40 text-emerald-200 text-xs font-bold">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>التطبيق مثبت على جهازك</span>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={onInstallPWA}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 py-2.5 px-5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 active:scale-95 text-slate-950 font-bold text-xs rounded-xl shadow-md shadow-amber-900/20 transition-all cursor-pointer whitespace-nowrap"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>📲 تثبيت التطبيق الآن</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
                 {/* Visitor Notification Activation Card */}
                 <div className="bg-gradient-to-br from-amber-950 via-slate-900 to-emerald-950 text-white rounded-2xl p-4 sm:p-5 border border-amber-400/40 shadow-md space-y-3.5">
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -739,12 +693,9 @@ export const ContactCreditsModal: React.FC<ContactCreditsModalProps> = ({
                           <h4 className="text-xs sm:text-sm font-bold font-['Alexandria'] text-white">
                             🔔 إشعارات الشجرة التنبيهية الفورية
                           </h4>
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400/20 text-amber-300 border border-amber-400/30">
-                            iOS / Android
-                          </span>
                         </div>
                         <p className="text-xs text-amber-100/90 leading-relaxed">
-                          احصل على تنبيهات فورية على هاتفك فور إضافة أفراد جدد أو إعلانات وتهاني عائلية
+                          احصل على تنبيهات فورية فور إضافة أفراد جدد أو إعلانات وتهاني عائلية
                         </p>
                       </div>
                     </div>
@@ -753,7 +704,7 @@ export const ContactCreditsModal: React.FC<ContactCreditsModalProps> = ({
                       {isNotificationsGranted ? (
                         <div className="flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl bg-emerald-800/80 border border-emerald-400/40 text-emerald-200 text-xs font-bold">
                           <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                          <span>✓ الإشعارات مفعلة على جهازك</span>
+                          <span>✓ الإشعارات مفعلة</span>
                         </div>
                       ) : (
                         <button
@@ -766,14 +717,6 @@ export const ContactCreditsModal: React.FC<ContactCreditsModalProps> = ({
                         </button>
                       )}
                     </div>
-                  </div>
-
-                  {/* Prominent Guidance Text */}
-                  <div className="p-3 sm:p-3.5 rounded-xl bg-amber-500/15 border border-amber-400/30 text-amber-200 text-xs leading-relaxed flex items-start gap-2.5">
-                    <Info className="w-4 h-4 text-amber-300 mt-0.5 flex-shrink-0" />
-                    <span>
-                      <strong>تنبيه هام لوصول الإشعارات:</strong> يرجى تنزيل وتثبيت تطبيق شجرة العائلة على شاشتك الرئيسية أولاً، ثم افتح البرنامج من شاشتك الرئيسية وفعل خدمة الإشعارات من داخله لضمان وصول التنبيهات إلى هاتفك.
-                    </span>
                   </div>
                 </div>
 

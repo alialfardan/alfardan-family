@@ -38,7 +38,6 @@ function sanitizeForFirestore(obj: any): any {
 }
 
 const SERVER_BASELINE_TS = 1743850000000;
-const CUSTOM_AVATARS_BACKUP_FILE = path.resolve(__dirname, 'src/data/customAvatarsBackup.json');
 const VALID_SERVER_PHOTO_KEY_RE = /^(o\d+|oF|oR|am_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+)$/;
 
 function isValidServerPhotoEntry(key: string, val: unknown): val is string {
@@ -59,35 +58,6 @@ function isValidServerPhotoEntry(key: string, val: unknown): val is string {
     return /^\/avatars\/(o\d+|oF|oR|am_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(trimmed);
   }
   return true;
-}
-
-function loadServerCustomAvatarsBackup(): Record<string, string> {
-  try {
-    if (fs.existsSync(CUSTOM_AVATARS_BACKUP_FILE)) {
-      const parsed = JSON.parse(fs.readFileSync(CUSTOM_AVATARS_BACKUP_FILE, 'utf-8'));
-      if (parsed && typeof parsed === 'object') {
-        const clean: Record<string, string> = {};
-        for (const [k, v] of Object.entries(parsed)) {
-          if (isValidServerPhotoEntry(k, v)) {
-            clean[k] = v.trim();
-          }
-        }
-        return clean;
-      }
-    }
-  } catch {}
-  return {};
-}
-
-function saveServerCustomAvatarBackup(key: string, dataUrl: string): void {
-  if (!key || !dataUrl || !dataUrl.startsWith('data:image/') || !isValidServerPhotoEntry(key, dataUrl)) return;
-  try {
-    const current = loadServerCustomAvatarsBackup();
-    current[key] = dataUrl;
-    fs.writeFileSync(CUSTOM_AVATARS_BACKUP_FILE, JSON.stringify(current, null, 2), 'utf-8');
-  } catch (e) {
-    console.warn('Failed to write customAvatarsBackup.json:', e);
-  }
 }
 
 function normalizeServerTimestamp(ts?: number | null): number {
@@ -116,12 +86,11 @@ const SERVER_LEGACY_REMOVED_NOTABLE_IDS = new Set<string>([
   'notable_mulla_hussain'
 ]);
 
-async function syncToFirestoreFromServer(familyData: any, baselinePhotos?: Record<string, string>): Promise<void> {
+async function syncToFirestoreFromServer(familyData: any): Promise<void> {
   if (!serverDb || !familyData) return;
   try {
     const compactPhotos: Record<string, string> = {};
     let totalPhotoBytes = 0;
-    const basePhotos = baselinePhotos || {};
     for (const [k, v] of Object.entries(familyData.photos || {})) {
       if (v === '') {
         compactPhotos[k] = '';
@@ -129,8 +98,7 @@ async function syncToFirestoreFromServer(familyData: any, baselinePhotos?: Recor
       }
       if (isValidServerPhotoEntry(k, v) && v.length < 90000) {
         const cleanVal = v.trim();
-        // Prioritize delta photos that differ from baseline so Firestore doc stays well under 1MB limit
-        if (basePhotos[k] !== cleanVal && totalPhotoBytes + cleanVal.length < 600000) {
+        if (totalPhotoBytes + cleanVal.length < 600000) {
           compactPhotos[k] = cleanVal;
           totalPhotoBytes += cleanVal.length;
         }
@@ -384,32 +352,53 @@ async function startServer() {
     'public/fardan_family_tree_backup.json'
   ];
 
-  // Helper to convert any /avatars/... path to inline Base64 from disk
-  function resolvePhotoToBase64(val: string): string | null {
-    if (!val || typeof val !== 'string') return null;
+  // Helper to extract any Base64 image to public/avatars/[key].jpg and return its clean /avatars/[key].jpg?v=[timestamp] path
+  function savePhotoToAvatarsDirAndGetCleanPath(key: string, val: string, vStamp: number): string | null {
+    if (!key || !val || typeof val !== 'string') return null;
     const trimmed = val.trim();
     if (!trimmed) return null;
-    if (trimmed.startsWith('data:image/')) return trimmed;
-    if (trimmed.startsWith('/avatars/')) {
-      const cleanName = trimmed.split('?')[0].replace(/^\/avatars\//, '');
-      const fullAvatarPath = path.join(avatarsDir, cleanName);
-      if (fs.existsSync(fullAvatarPath)) {
-        try {
-          const buf = fs.readFileSync(fullAvatarPath);
-          return `data:image/jpeg;base64,${buf.toString('base64')}`;
-        } catch {}
-      }
-      const backups = loadServerCustomAvatarsBackup();
-      const bKey = path.basename(cleanName, path.extname(cleanName));
-      if (backups[bKey] && backups[bKey].startsWith('data:image/')) {
-        return backups[bKey];
+    const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!cleanKey) return null;
+
+    if (trimmed.startsWith('data:image/')) {
+      const m = trimmed.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,(.+)$/);
+      const rawBase64 = m ? m[1] : trimmed.split(',')[1];
+      if (rawBase64) {
+        if (!fs.existsSync(avatarsDir)) {
+          fs.mkdirSync(avatarsDir, { recursive: true });
+        }
+        const filename = `${cleanKey}.jpg`;
+        const fullAvatarPath = path.join(avatarsDir, filename);
+        fs.writeFileSync(fullAvatarPath, Buffer.from(rawBase64, 'base64'));
+        return `/avatars/${filename}?v=${vStamp}`;
       }
       return null;
     }
+
+    if (trimmed.startsWith('/avatars/')) {
+      const cleanFile = trimmed.split('?')[0].replace(/^\/avatars\//, '');
+      return trimmed.includes('?v=') ? trimmed : `/avatars/${cleanFile}?v=${vStamp}`;
+    }
+
     return trimmed;
   }
 
-  // 1. API: Upload Avatar — stores directly as Base64 inside initialTreeData.json and fardan_family_tree_backup.json
+  function updateAvatarsManifest(vStamp: number): void {
+    try {
+      if (!fs.existsSync(avatarsDir)) return;
+      const files = fs.readdirSync(avatarsDir)
+        .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f))
+        .sort((a, b) => a.localeCompare(b));
+      const manifest = files.map((filename) => ({
+        filename,
+        url: `/avatars/${filename}?v=${vStamp}`,
+      }));
+      const manifestPath = path.resolve(__dirname, 'public/avatars-manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+    } catch {}
+  }
+
+  // 1. API: Upload Avatar — saves file directly to public/avatars/[key].jpg and records /avatars/[key].jpg?v=[timestamp] in JSON files
   app.post('/api/upload-avatar', (req, res) => {
     try {
       const { key, dataUrl } = req.body;
@@ -417,17 +406,13 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing key or dataUrl' });
       }
 
-      const resolvedBase64 = resolvePhotoToBase64(dataUrl);
-      if (!resolvedBase64) {
+      const vStamp = getServerSafeTimestamp();
+      const cleanAvatarPath = savePhotoToAvatarsDirAndGetCleanPath(key, dataUrl, vStamp);
+      if (!cleanAvatarPath) {
         return res.status(400).json({ error: 'Invalid dataUrl format' });
       }
 
-      if (resolvedBase64.startsWith('data:image/')) {
-        saveServerCustomAvatarBackup(key, resolvedBase64);
-      }
-
       let latestFamilyData: any = null;
-      let baselinePhotos: Record<string, string> = {};
 
       for (const p of TARGET_JSON_FILES) {
         const fullPath = path.resolve(__dirname, p);
@@ -436,20 +421,17 @@ async function startServer() {
             const raw = fs.readFileSync(fullPath, 'utf-8');
             const parsed = JSON.parse(raw);
             const targetObj = parsed.familyData ? parsed.familyData : parsed;
-            if (p === 'src/data/initialTreeData.json') {
-              baselinePhotos = { ...(targetObj.photos || {}) };
-            }
             if (key.startsWith('arch_') || key.startsWith('photo_')) {
               if (Array.isArray(targetObj.archivalPhotos)) {
                 targetObj.archivalPhotos = targetObj.archivalPhotos.map((ap: any) =>
-                  ap && ap.id === key ? { ...ap, url: resolvedBase64 } : ap
+                  ap && ap.id === key ? { ...ap, url: cleanAvatarPath } : ap
                 );
               }
             } else {
               if (!targetObj.photos) targetObj.photos = {};
-              targetObj.photos[key] = resolvedBase64;
+              targetObj.photos[key] = cleanAvatarPath;
             }
-            targetObj.updatedAt = getServerSafeTimestamp(undefined, targetObj.updatedAt);
+            targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
             latestFamilyData = targetObj;
             fs.writeFileSync(fullPath, JSON.stringify(parsed, null, 2), 'utf-8');
           } catch (e) {
@@ -458,13 +440,15 @@ async function startServer() {
         }
       }
 
+      updateAvatarsManifest(vStamp);
+
       if (latestFamilyData) {
-        syncToFirestoreFromServer(latestFamilyData, baselinePhotos).catch(() => {});
+        syncToFirestoreFromServer(latestFamilyData).catch(() => {});
       }
 
-      autoGitCommitAndPush(`feat(media): auto-update image ${key} and publish`).catch(() => {});
+      autoGitCommitAndPush(`feat(media): auto-update image ${key} in public/avatars and publish`).catch(() => {});
 
-      return res.json({ success: true, url: resolvedBase64 });
+      return res.json({ success: true, url: cleanAvatarPath });
     } catch (err: any) {
       console.error('Error in /api/upload-avatar:', err);
       return res.status(500).json({ error: err.message || 'Failed to save avatar' });
@@ -472,40 +456,25 @@ async function startServer() {
   });
 
   // Helper to apply and persist incoming state across all 3 JSON files (initialTreeData.json, initialTreeData.backup.json, fardan_family_tree_backup.json)
-  function persistStateToTargetJsonFiles(rawPayload: any): { syncedFamilyData: any; baselinePhotos: Record<string, string>; updatedAt: number } {
+  function persistStateToTargetJsonFiles(rawPayload: any): { syncedFamilyData: any; updatedAt: number } {
     const state = rawPayload?.familyData ? rawPayload.familyData : rawPayload;
     const vStamp = getServerSafeTimestamp(state?.updatedAt);
     const incomingPhotos = state?.photos || {};
     const explicitlyDeletedPhotoKeys = new Set<string>();
 
-    // Remove explicitly deleted photos from customAvatarsBackup.json as well
     if (incomingPhotos && typeof incomingPhotos === 'object') {
-      const currentCustomBackups = loadServerCustomAvatarsBackup();
-      let backupModified = false;
       for (const [k, val] of Object.entries(incomingPhotos)) {
         if (val === '' || val === null) {
           explicitlyDeletedPhotoKeys.add(k);
-          if (currentCustomBackups[k]) {
-            delete currentCustomBackups[k];
-            backupModified = true;
-          }
-        } else if (typeof val === 'string' && val.startsWith('data:image/')) {
-          currentCustomBackups[k] = val.trim();
-          backupModified = true;
         }
-      }
-      if (backupModified) {
-        try {
-          fs.writeFileSync(CUSTOM_AVATARS_BACKUP_FILE, JSON.stringify(currentCustomBackups, null, 2), 'utf-8');
-        } catch {}
       }
     }
 
     const processedArchivalPhotos = Array.isArray(state?.archivalPhotos)
       ? state.archivalPhotos.map((ap: any) => {
-          if (ap && typeof ap.url === 'string' && ap.url.startsWith('/avatars/')) {
-            const b64 = resolvePhotoToBase64(ap.url);
-            if (b64) return { ...ap, url: b64 };
+          if (ap && ap.id && typeof ap.url === 'string' && ap.url.startsWith('data:image/')) {
+            const cleanUrl = savePhotoToAvatarsDirAndGetCleanPath(ap.id, ap.url, vStamp);
+            if (cleanUrl) return { ...ap, url: cleanUrl };
           }
           return ap;
         })
@@ -515,27 +484,17 @@ async function startServer() {
       ? state.notableFigures.map((nf: any) => {
           if (!nf || !nf.id) return nf;
           let updatedPhoto = nf.photo;
-          if (typeof updatedPhoto === 'string' && updatedPhoto.startsWith('/avatars/')) {
-            updatedPhoto = resolvePhotoToBase64(updatedPhoto) || updatedPhoto;
+          if (typeof updatedPhoto === 'string' && updatedPhoto.startsWith('data:image/')) {
+            updatedPhoto = savePhotoToAvatarsDirAndGetCleanPath(nf.id, updatedPhoto, vStamp) || updatedPhoto;
           }
-          const updatedManuscripts = Array.isArray(nf.manuscripts)
-            ? nf.manuscripts.map((ms: any) => {
-                if (ms && typeof ms.url === 'string' && ms.url.startsWith('/avatars/')) {
-                  return { ...ms, url: resolvePhotoToBase64(ms.url) || ms.url };
-                }
-                return ms;
-              })
-            : nf.manuscripts;
           return {
             ...nf,
             photo: updatedPhoto,
-            manuscripts: updatedManuscripts
           };
         })
       : null;
 
     let syncedFamilyData: any = null;
-    let baselinePhotos: Record<string, string> = {};
     let finalUpdatedAt = vStamp;
 
     for (const p of TARGET_JSON_FILES) {
@@ -544,9 +503,6 @@ async function startServer() {
         const raw = fs.readFileSync(fullPath, 'utf-8');
         const parsed = JSON.parse(raw);
         const existingData = parsed.familyData ? parsed.familyData : parsed;
-        if (p === 'src/data/initialTreeData.json') {
-          baselinePhotos = { ...(existingData?.photos || {}) };
-        }
         const baseTime = normalizeServerTimestamp(existingData?.updatedAt);
         const incTime = normalizeServerTimestamp(state?.updatedAt) || vStamp;
         finalUpdatedAt = getServerSafeTimestamp(incTime, baseTime);
@@ -559,13 +515,13 @@ async function startServer() {
           true
         );
 
-        // Preserve all existing valid photos as Base64 and apply incoming Base64 updates or explicit '' deletions
+        // Preserve all existing valid photos as /avatars/[id].jpg?v=[timestamp] and extract any incoming Base64 to public/avatars/
         const mergedPhotos: Record<string, string> = {};
         for (const [ek, ev] of Object.entries(existingData?.photos || {})) {
           if (explicitlyDeletedPhotoKeys.has(ek)) continue;
           if (isValidServerPhotoEntry(ek, ev)) {
-            const b64 = resolvePhotoToBase64(ev);
-            if (b64) mergedPhotos[ek] = b64;
+            const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(ek, ev, finalUpdatedAt);
+            if (cleanPath) mergedPhotos[ek] = cleanPath;
           }
         }
         for (const [pk, pv] of Object.entries(incomingPhotos)) {
@@ -574,9 +530,9 @@ async function startServer() {
             continue;
           }
           if (isValidServerPhotoEntry(pk, pv)) {
-            const b64 = resolvePhotoToBase64(pv);
-            if (b64) {
-              mergedPhotos[pk] = b64;
+            const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(pk, pv, finalUpdatedAt);
+            if (cleanPath) {
+              mergedPhotos[pk] = cleanPath;
             }
           }
         }
@@ -702,7 +658,8 @@ async function startServer() {
       }
     }
 
-    return { syncedFamilyData, baselinePhotos, updatedAt: finalUpdatedAt };
+    updateAvatarsManifest(finalUpdatedAt);
+    return { syncedFamilyData, updatedAt: finalUpdatedAt };
   }
 
   // Direct Disk Write Bridge: /__save_tree_to_disk
@@ -712,16 +669,17 @@ async function startServer() {
       if (!state || typeof state !== 'object') {
         return res.status(400).json({ error: 'Invalid tree state' });
       }
-      const { syncedFamilyData, baselinePhotos, updatedAt } = persistStateToTargetJsonFiles(state);
+      const { syncedFamilyData, updatedAt } = persistStateToTargetJsonFiles(state);
       if (syncedFamilyData) {
-        syncToFirestoreFromServer(syncedFamilyData, baselinePhotos).catch(() => {});
+        syncToFirestoreFromServer(syncedFamilyData).catch(() => {});
       }
       autoGitCommitAndPush('feat(tree): direct disk save to initialTreeData.json and fardan_family_tree_backup.json').catch(() => {});
       return res.json({
         success: true,
         updatedAt,
         membersCount: syncedFamilyData?.members?.length || 0,
-        photosCount: Object.keys(syncedFamilyData?.photos || {}).length
+        photosCount: Object.keys(syncedFamilyData?.photos || {}).length,
+        photos: syncedFamilyData?.photos || {}
       });
     } catch (err: any) {
       console.error('Error in /__save_tree_to_disk:', err);
@@ -737,11 +695,11 @@ async function startServer() {
         return res.status(400).json({ error: 'Invalid state' });
       }
 
-      const { syncedFamilyData, baselinePhotos, updatedAt } = persistStateToTargetJsonFiles(state);
+      const { syncedFamilyData, updatedAt } = persistStateToTargetJsonFiles(state);
 
       // Immediately sync to Firestore from server as well
       if (syncedFamilyData) {
-        syncToFirestoreFromServer(syncedFamilyData, baselinePhotos).catch(() => {});
+        syncToFirestoreFromServer(syncedFamilyData).catch(() => {});
       }
 
       // Immediately schedule GitHub commit & push if token is configured
@@ -750,6 +708,7 @@ async function startServer() {
       return res.json({
         success: true,
         updatedAt,
+        photos: syncedFamilyData?.photos,
         archivalPhotos: syncedFamilyData?.archivalPhotos,
         message: 'Saved and synced to disk, Firestore, and GitHub'
       });
@@ -810,21 +769,18 @@ async function startServer() {
     }
   });
 
-  // 4. API: List all available avatars as inline Base64 from initialTreeData.json
+  // 4. API: List all available avatars from public/avatars/
   app.get('/api/available-avatars', (_req, res) => {
     try {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-      const treeDataPath = path.resolve(__dirname, 'src/data/initialTreeData.json');
-      if (fs.existsSync(treeDataPath)) {
-        const parsed = JSON.parse(fs.readFileSync(treeDataPath, 'utf-8'));
-        const photos = parsed?.familyData?.photos || {};
-        const images = Object.entries(photos)
-          .filter(([, url]) => typeof url === 'string' && url.startsWith('data:image/'))
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, url]) => ({
-            filename: `${key}.jpg`,
-            url: url as string
-          }));
+      if (fs.existsSync(avatarsDir)) {
+        const files = fs.readdirSync(avatarsDir)
+          .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f))
+          .sort((a, b) => a.localeCompare(b));
+        const images = files.map((filename) => ({
+          filename,
+          url: `/avatars/${filename}`
+        }));
         return res.json(images);
       }
       return res.json([]);
@@ -853,7 +809,7 @@ async function startServer() {
           ? 'تم اعتماد ونشر كافة التعديلات والصور إلى GitHub بنجاح! يتم الآن بناء ونشر الموقع الرسمي alfardanfamily.com تلقائياً 🚀'
           : (hasToken
               ? 'تم الحفظ والالتزام محلياً، ولكن تعذر الدفع لـ GitHub. يرجى مراجعة صلاحيات الرمز (PAT repo scope)'
-              : 'تم حفظ كافة التعديلات ودمج 1273 اسماً محلياً. يرجى إدخال رمز الوصول الشخصي (GitHub Token) لتفعيل النشر اللحظي التلقائي إلى alfardanfamily.com'),
+              : 'تم حفظ كافة التعديلات والصور محلياً في ملفات المشروع و public/avatars/ بنجاح. يمكنك الآن الضغط على أداة GitHub بأعلى AI Studio لعمل Commit & Push.'),
         stdout
       });
     } catch (err: any) {
@@ -903,8 +859,7 @@ async function startServer() {
     }
   });
 
-  // Static avatars with automatic on-the-fly restoration from customAvatarsBackup.json,
-  // and an instant 200 OK SVG fallback if the avatar file does not exist on disk (eliminating 404 Console errors)
+  // Static avatars with instant 200 OK SVG fallback if the avatar file does not exist on disk
   const FALLBACK_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
     <defs>
       <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -921,17 +876,6 @@ async function startServer() {
     try {
       const cleanRel = decodeURIComponent(req.path.replace(/^\//, ''));
       const fullPath = path.join(avatarsDir, cleanRel);
-      if (!fs.existsSync(fullPath)) {
-        const baseKey = path.basename(cleanRel, path.extname(cleanRel));
-        const backups = loadServerCustomAvatarsBackup();
-        const dataUrl = backups[baseKey];
-        if (dataUrl) {
-          const m = dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-          if (m && m[2]) {
-            fs.writeFileSync(fullPath, Buffer.from(m[2], 'base64'));
-          }
-        }
-      }
       if (!fs.existsSync(fullPath)) {
         res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
         res.setHeader('Cache-Control', 'public, max-age=300');

@@ -397,15 +397,15 @@ export async function syncFamilyStateToCloud(state: FamilyState): Promise<void> 
 
       try {
         const safeContact = resolveContactInfo(targetState.contactInfo);
-        // Baseline photos are already embedded as Base64 inside src/data/initialTreeData.json.
-        // Send modified/added/deleted Base64 photos in Firestore so family_tree/state stays well under the 1MB limit.
+        // Photos are saved to public/avatars/[id].jpg and referenced as /avatars/[id].jpg?v=[timestamp].
+        // Include clean /avatars/ paths and any newly uploaded Base64 photos in Firestore so family_tree/state stays well under the 1MB limit.
         const baselinePhotos = DEFAULT_FAMILY_DATA?.photos || {};
         const compactPhotos: Record<string, string> = {};
         let totalPhotoBytes = 0;
         for (const [k, v] of Object.entries(targetState.photos || {})) {
           if (typeof v !== 'string') continue;
-          if (v === '') {
-            compactPhotos[k] = '';
+          if (v === '' || v.startsWith('/avatars/') || v.startsWith('http://') || v.startsWith('https://')) {
+            compactPhotos[k] = v;
           } else if (v !== baselinePhotos[k] && v.length < 150000 && totalPhotoBytes + v.length < 550000) {
             compactPhotos[k] = v;
             totalPhotoBytes += v.length;
