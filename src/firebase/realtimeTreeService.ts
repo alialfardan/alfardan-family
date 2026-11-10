@@ -4,88 +4,9 @@ import { FamilyState, ContactInfo, ArchivalPhoto, NotableFigure } from '../types
 import { deduplicateMembers, resolveContactInfo, resolveNotableFigures, normalizeTimestamp, LEGACY_REMOVED_NOTABLE_IDS, DEFAULT_FAMILY_DATA } from '../data/treeManager';
 
 const STATE_DOC_REF = doc(db, 'family_tree', 'state');
-const CUSTOM_AVATARS_DOC_REF = doc(db, 'family_tree', 'custom_avatars');
 const SETTINGS_CONTACT_REF = doc(db, 'settings', 'contactInfo');
 const ARCHIVAL_PHOTOS_COL = collection(db, 'archival_photos');
 const NOTABLE_FIGURES_COL = collection(db, 'notable_figures');
-
-export async function syncCustomAvatarToCloud(key: string, dataUrl: string): Promise<void> {
-  if (isFirestoreQuotaExhausted() || !key || !dataUrl || !dataUrl.startsWith('data:image/')) return;
-  try {
-    if (dataUrl.length > 200000) return;
-    let existingMap: Record<string, string> = {};
-    try {
-      const snap = await getDoc(CUSTOM_AVATARS_DOC_REF);
-      if (snap.exists()) {
-        const d = snap.data();
-        if (d && typeof d.avatars === 'object' && d.avatars) {
-          existingMap = { ...d.avatars };
-        }
-      }
-    } catch {}
-    existingMap[key] = dataUrl;
-    const keys = Object.keys(existingMap);
-    // Keep the 12 most recent uploaded Base64 avatars in the relay doc so it stays well under 600KB
-    if (keys.length > 12) {
-      for (let i = 0; i < keys.length - 12; i++) {
-        delete existingMap[keys[i]];
-      }
-    }
-    await setDoc(CUSTOM_AVATARS_DOC_REF, {
-      avatars: existingMap,
-      updatedAt: Date.now()
-    });
-  } catch (err: any) {
-    if (isQuotaError(err)) {
-      tripFirestoreCircuitBreaker();
-    }
-  }
-}
-
-export async function deleteCustomAvatarFromCloud(key: string): Promise<void> {
-  if (isFirestoreQuotaExhausted() || !key) return;
-  try {
-    const snap = await getDoc(CUSTOM_AVATARS_DOC_REF);
-    if (snap.exists()) {
-      const d = snap.data();
-      if (d && typeof d.avatars === 'object' && d.avatars && key in d.avatars) {
-        const nextMap = { ...d.avatars };
-        delete nextMap[key];
-        await setDoc(CUSTOM_AVATARS_DOC_REF, {
-          avatars: nextMap,
-          updatedAt: Date.now()
-        });
-      }
-    }
-  } catch {}
-}
-
-export function subscribeToCustomAvatars(
-  onUpdate: (avatars: Record<string, string>, updatedAt: number) => void
-): () => void {
-  let unsub: (() => void) | null = null;
-  try {
-    unsub = onSnapshot(
-      CUSTOM_AVATARS_DOC_REF,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          if (data && typeof data.avatars === 'object' && data.avatars) {
-            onUpdate(data.avatars as Record<string, string>, typeof data.updatedAt === 'number' ? data.updatedAt : Date.now());
-          }
-        }
-      },
-      () => {}
-    );
-    return () => {
-      if (unsub) {
-        try { unsub(); } catch {}
-      }
-    };
-  } catch {
-    return () => {};
-  }
-}
 
 export function markQuotaExhausted() {
   tripFirestoreCircuitBreaker();
@@ -490,17 +411,12 @@ export async function syncFamilyStateToCloud(state: FamilyState): Promise<void> 
       try {
         const safeContact = resolveContactInfo(targetState.contactInfo);
         // Photos are saved to public/avatars/[id].jpg and referenced as /avatars/[id].jpg?v=[timestamp].
-        // Include clean /avatars/ paths and any newly uploaded Base64 photos in Firestore so family_tree/state stays well under the 1MB limit.
-        const baselinePhotos = DEFAULT_FAMILY_DATA?.photos || {};
+        // Never store Base64 images in Firebase; only store clean /avatars/ or http(s) paths.
         const compactPhotos: Record<string, string> = {};
-        let totalPhotoBytes = 0;
         for (const [k, v] of Object.entries(targetState.photos || {})) {
           if (typeof v !== 'string') continue;
           if (v === '' || v.startsWith('/avatars/') || v.startsWith('http://') || v.startsWith('https://')) {
             compactPhotos[k] = v;
-          } else if (v !== baselinePhotos[k] && v.length < 150000 && totalPhotoBytes + v.length < 550000) {
-            compactPhotos[k] = v;
-            totalPhotoBytes += v.length;
           }
         }
         for (const delKey of recentlyDeletedPhotoKeys) {

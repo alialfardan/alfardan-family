@@ -819,6 +819,12 @@ export async function deleteMemberAvatarFromDisk(key: string): Promise<boolean> 
   }
 }
 
+export interface SaveTreeToDiskResult {
+  ok: boolean;
+  filesWritten: string[];
+  message: string;
+}
+
 /**
  * Physical Disk-Write Bridge (/api/save-tree):
  * Immediately writes the complete tree data to src/data/initialTreeData.json and
@@ -828,9 +834,12 @@ export async function deleteMemberAvatarFromDisk(key: string): Promise<boolean> 
  */
 export async function saveTreeToDisk(
   state: FamilyState,
-  options?: { deletedPhotoKeys?: string[]; replacePhotos?: boolean }
-): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
+  options?: { deletedPhotoKeys?: string[]; replacePhotos?: boolean; isPublishAction?: boolean }
+): Promise<SaveTreeToDiskResult> {
+  const warningMsg = 'لم تُكتب الملفات على المشروع. افتح الموقع من معاينة AI Studio';
+  if (typeof window === 'undefined') {
+    return { ok: false, filesWritten: [], message: warningMsg };
+  }
   try {
     const cleanPhotos = cleanPhotosMap(state.photos);
     const deletedKeys = options?.deletedPhotoKeys ? [...options.deletedPhotoKeys] : [];
@@ -851,6 +860,7 @@ export async function saveTreeToDisk(
       treeData: RAW_TREE,
       deletedPhotoKeys: Array.from(new Set(deletedKeys)),
       replacePhotos: options?.replacePhotos ?? true,
+      isPublishAction: options?.isPublishAction ?? false,
       familyData: {
         ...state,
         members: deduplicateMembers(state.members || []),
@@ -864,17 +874,27 @@ export async function saveTreeToDisk(
       body: JSON.stringify(fullPayload)
     });
     if (res.ok) {
-      try {
-        const json = await res.json();
-        if (json?.photos && DEFAULT_FAMILY_DATA) {
-          DEFAULT_FAMILY_DATA.photos = { ...json.photos };
-        }
-      } catch {}
-      return true;
+      const json = await res.json();
+      if (json?.photos && DEFAULT_FAMILY_DATA) {
+        DEFAULT_FAMILY_DATA.photos = { ...json.photos };
+      }
+      const filesWritten: string[] = Array.isArray(json?.filesWritten) ? json.filesWritten : [];
+      if (filesWritten.length > 0) {
+        return {
+          ok: true,
+          filesWritten,
+          message: `تم تحديث ${filesWritten.length} ملف: ${filesWritten.join('، ')}`
+        };
+      }
+      return {
+        ok: false,
+        filesWritten: [],
+        message: warningMsg
+      };
     }
-    return false;
+    return { ok: false, filesWritten: [], message: warningMsg };
   } catch {
-    return false;
+    return { ok: false, filesWritten: [], message: warningMsg };
   }
 }
 

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build && rm -rf node_modules/.vite node_modules/lucide-react/dist/umd node_modules/lucide-react/dist/cjs node_modules/@firebase/firestore/dist/intermediate node_modules/@firebase/firestore/dist/lite node_modules/@firebase/auth node_modules/@firebase/database node_modules/@firebase/ai node_modules/@firebase/storage node_modules/@firebase/data-connect node_modules/firebase/compat && find node_modules -type f -name '*.map' -delete 2>/dev/null; git reflog expire --expire=now --all 2>/dev/null; git gc --prune=now --quiet 2>/dev/null || true",
+    "build": "vite build && rm -rf node_modules/.vite node_modules/lucide-react/dist/umd node_modules/lucide-react/dist/cjs node_modules/@firebase/firestore/dist/intermediate node_modules/@firebase/firestore/dist/lite node_modules/@firebase/auth node_modules/@firebase/database node_modules/@firebase/ai node_modules/@firebase/storage node_modules/@firebase/data-connect node_modules/firebase/compat && find node_modules -type f -name '*.map' -delete 2>/dev/null || true",
     "start": "node server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",

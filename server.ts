@@ -3,14 +3,21 @@ import { createServer as createViteServer } from 'vite';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from 'firebase/firestore';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize server-side Firestore client so backend API saves also guarantee instant Firestore sync
+// Remove legacy .github_token file if it exists
+try {
+  const legacyTokenFile = path.resolve(__dirname, '.github_token');
+  if (fs.existsSync(legacyTokenFile)) {
+    fs.unlinkSync(legacyTokenFile);
+  }
+} catch {}
+
+// Initialize server-side Firestore client so backend API saves also guarantee instant Firestore metadata sync
 let serverDb: ReturnType<typeof getFirestore> | null = null;
 try {
   setLogLevel('silent');
@@ -95,19 +102,19 @@ const SERVER_LEGACY_REMOVED_NOTABLE_IDS = new Set<string>([
 async function syncToFirestoreFromServer(familyData: any): Promise<void> {
   if (!serverDb || !familyData) return;
   try {
+    // Never store Base64 images in Firebase; only sync clean /avatars/ or http(s) URLs
     const compactPhotos: Record<string, string> = {};
-    let totalPhotoBytes = 0;
     for (const [k, v] of Object.entries(familyData.photos || {})) {
       if (v === '') {
         compactPhotos[k] = '';
         continue;
       }
-      if (isValidServerPhotoEntry(k, v) && v.length < 90000) {
-        const cleanVal = v.trim();
-        if (totalPhotoBytes + cleanVal.length < 600000) {
-          compactPhotos[k] = cleanVal;
-          totalPhotoBytes += cleanVal.length;
-        }
+      if (
+        isValidServerPhotoEntry(k, v) &&
+        !v.trim().startsWith('data:image/') &&
+        (v.trim().startsWith('/avatars/') || v.trim().startsWith('http://') || v.trim().startsWith('https://'))
+      ) {
+        compactPhotos[k] = v.trim();
       }
     }
     const safeUpdatedAt = normalizeServerTimestamp(familyData.updatedAt) || getServerSafeTimestamp();
@@ -119,147 +126,20 @@ async function syncToFirestoreFromServer(familyData: any): Promise<void> {
       removed: familyData.removed || [],
       spouses: familyData.spouses || {},
       mothers: familyData.mothers || {},
-      archivalPhotos: familyData.archivalPhotos || [],
-      notableFigures: familyData.notableFigures || [],
+      archivalPhotos: (familyData.archivalPhotos || []).filter(
+        (ap: any) => ap && typeof ap.url === 'string' && !ap.url.startsWith('data:image/')
+      ),
+      notableFigures: (familyData.notableFigures || []).map((nf: any) => ({
+        ...nf,
+        photo: nf?.photo && typeof nf.photo === 'string' && nf.photo.startsWith('data:image/') ? undefined : nf?.photo
+      })),
       contactInfo: familyData.contactInfo || {},
       updatedAt: safeUpdatedAt
     });
     await setDoc(doc(serverDb, 'family_tree', 'state'), payload, { merge: true });
-
-    if (Array.isArray(familyData.notableFigures)) {
-      for (const nf of familyData.notableFigures) {
-        if (nf && nf.id) {
-          setDoc(
-            doc(serverDb, 'notable_figures', nf.id),
-            sanitizeForFirestore({
-              ...nf,
-              deleted: nf.deleted === true,
-              updatedAt: nf.updatedAt || safeUpdatedAt
-            }),
-            { merge: true }
-          ).catch(() => {});
-        }
-      }
-    }
-    for (const legacyId of SERVER_LEGACY_REMOVED_NOTABLE_IDS) {
-      setDoc(
-        doc(serverDb, 'notable_figures', legacyId),
-        { id: legacyId, deleted: true, updatedAt: 1743850000000 },
-        { merge: true }
-      ).catch(() => {});
-    }
   } catch {
     // Silent fallback if quota is temporarily reached
   }
-}
-
-const GITHUB_TOKEN_FILE = path.resolve(__dirname, '.github_token');
-
-function getGitHubToken(): string {
-  if (process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim()) {
-    return process.env.GITHUB_TOKEN.trim();
-  }
-  try {
-    if (fs.existsSync(GITHUB_TOKEN_FILE)) {
-      const t = fs.readFileSync(GITHUB_TOKEN_FILE, 'utf-8').trim();
-      if (t) return t;
-    }
-  } catch {}
-  return '';
-}
-
-function getGitHubRemoteUrl(): string {
-  const token = getGitHubToken();
-  if (token) {
-    return `https://${encodeURIComponent(token)}@github.com/alialfardan/alfardan-family.git`;
-  }
-  return 'https://github.com/alialfardan/alfardan-family.git';
-}
-
-// Mutex & Debounce queue to serialize GitHub push operations when a custom token is configured
-let isGitSyncRunning = false;
-let pendingGitSyncMsg: string | null = null;
-let gitSyncDebounceTimer: NodeJS.Timeout | null = null;
-
-function scheduleAutoGitSync(msg: string, delayMs = 1500): void {
-  if (!getGitHubToken()) {
-    // Leave files modified in working tree so AI Studio's built-in GitHub sync detects them immediately!
-    return;
-  }
-  pendingGitSyncMsg = msg;
-  if (gitSyncDebounceTimer) {
-    clearTimeout(gitSyncDebounceTimer);
-  }
-  gitSyncDebounceTimer = setTimeout(() => {
-    executeNextGitSync().catch(() => {});
-  }, delayMs);
-}
-
-async function executeNextGitSync(): Promise<string> {
-  if (isGitSyncRunning) {
-    return 'sync_in_progress_queued';
-  }
-  const token = getGitHubToken();
-  if (!token) {
-    pendingGitSyncMsg = null;
-    return 'NO_TOKEN_CONFIGURED';
-  }
-  if (!pendingGitSyncMsg) {
-    return 'idle';
-  }
-
-  isGitSyncRunning = true;
-  const msg = pendingGitSyncMsg;
-  pendingGitSyncMsg = null;
-
-  try {
-    const remote = getGitHubRemoteUrl();
-    const pushCmd = `git push --force "${remote}" main:main || true
-git push --force "${remote}" main:master || true`;
-
-    const script = `git config --global --add safe.directory '*' 2>/dev/null || true
-if [ ! -d .git ]; then
-  git init -b main
-  git config user.name "alialfardan"
-  git config user.email "alfardan.family.bh@gmail.com"
-  git remote add origin "${remote}" 2>/dev/null || git remote set-url origin "${remote}"
-else
-  git config user.name "alialfardan" 2>/dev/null || true
-  git config user.email "alfardan.family.bh@gmail.com" 2>/dev/null || true
-  git remote set-url origin "${remote}" 2>/dev/null || git remote add origin "${remote}" 2>/dev/null || true
-fi
-git add -A
-git commit -m "${msg.replace(/"/g, '\\"')}" 2>/dev/null || true
-${pushCmd}`;
-
-    const result = await new Promise<string>((resolve) => {
-      exec(script, { cwd: __dirname }, (err, stdout, stderr) => {
-        if (err && !err.message.includes('nothing to commit')) {
-          console.warn('Git sync notice:', err.message, stderr);
-          resolve(stdout || stderr || err.message);
-        } else {
-          resolve(stdout || 'success');
-        }
-      });
-    });
-
-    return result;
-  } catch (err: any) {
-    console.warn('Auto-git sync execution error:', err?.message || err);
-    return 'error';
-  } finally {
-    isGitSyncRunning = false;
-    if (pendingGitSyncMsg) {
-      setTimeout(() => {
-        executeNextGitSync().catch(() => {});
-      }, 1500);
-    }
-  }
-}
-
-function autoGitCommitAndPush(msg: string): Promise<string> {
-  scheduleAutoGitSync(msg, 1500);
-  return Promise.resolve('scheduled');
 }
 
 function mergeTwoMemberRecordsServer(existing: any, incoming: any, forceIncoming = true): any {
@@ -331,11 +211,14 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Track files whose content actually changed on disk
+  const sessionFilesWritten = new Set<string>();
+
   // Body parser with 50MB limit for image uploads
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-  // Enable CORS so alfardanfamily.com can fetch live real-time updates and avatars from AI Studio
+  // Enable CORS
   app.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
@@ -358,26 +241,59 @@ async function startServer() {
     'public/fardan_family_tree_backup.json'
   ];
 
-  function removeAvatarFileFromDiskServer(key: string): void {
+  // Helper: write file ONLY if its content actually changed
+  function writeFileIfChanged(relPath: string, newContent: string | Buffer): boolean {
+    const fullPath = path.resolve(__dirname, relPath);
+    const newBuf = typeof newContent === 'string' ? Buffer.from(newContent, 'utf-8') : newContent;
+    if (fs.existsSync(fullPath)) {
+      try {
+        const existingBuf = fs.readFileSync(fullPath);
+        if (existingBuf.equals(newBuf)) {
+          return false;
+        }
+      } catch {}
+    } else {
+      const parentDir = path.dirname(fullPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+    }
+    fs.writeFileSync(fullPath, newBuf);
+    sessionFilesWritten.add(relPath);
+    return true;
+  }
+
+  function removeAvatarFileFromDiskServer(key: string): string[] {
+    const removedFiles: string[] = [];
     const cleanKey = String(key || '').replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!cleanKey || !fs.existsSync(avatarsDir)) return;
+    if (!cleanKey || !fs.existsSync(avatarsDir)) return removedFiles;
     for (const ext of ['jpg', 'jpeg', 'png', 'webp']) {
-      const filePath = path.join(avatarsDir, `${cleanKey}.${ext}`);
+      const relPath = `public/avatars/${cleanKey}.${ext}`;
+      const filePath = path.resolve(__dirname, relPath);
       if (fs.existsSync(filePath)) {
         try {
           fs.unlinkSync(filePath);
+          removedFiles.push(relPath);
+          sessionFilesWritten.add(relPath);
         } catch {}
       }
     }
+    return removedFiles;
   }
 
-  // Helper to extract any Base64 image to public/avatars/[key].jpg and return its clean /avatars/[key].jpg?v=[timestamp] path
-  function savePhotoToAvatarsDirAndGetCleanPath(key: string, val: string, vStamp: number): string | null {
-    if (!key || !val || typeof val !== 'string') return null;
+  // Helper to extract any Base64 image to public/avatars/[key].jpg (only writing if content changed)
+  // and return its clean /avatars/[key].jpg?v=[timestamp] path + filesWritten
+  function savePhotoToAvatarsDirAndGetCleanPath(
+    key: string,
+    val: string,
+    vStamp: number
+  ): { cleanPath: string | null; filesWritten: string[] } {
+    const filesWritten: string[] = [];
+    if (!key || !val || typeof val !== 'string') return { cleanPath: null, filesWritten };
     const trimmed = val.trim();
-    if (!trimmed) return null;
+    if (!trimmed) return { cleanPath: null, filesWritten };
     const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '');
-    if (!cleanKey) return null;
+    if (!cleanKey) return { cleanPath: null, filesWritten };
 
     if (!fs.existsSync(avatarsDir)) {
       fs.mkdirSync(avatarsDir, { recursive: true });
@@ -388,46 +304,78 @@ async function startServer() {
       const rawBase64 = m ? m[1] : trimmed.split(',')[1];
       if (rawBase64) {
         const filename = `${cleanKey}.jpg`;
-        const fullAvatarPath = path.join(avatarsDir, filename);
-        fs.writeFileSync(fullAvatarPath, Buffer.from(rawBase64, 'base64'));
-        return `/avatars/${filename}?v=${vStamp}`;
+        const relAvatarPath = `public/avatars/${filename}`;
+        const imgBuf = Buffer.from(rawBase64, 'base64');
+        if (writeFileIfChanged(relAvatarPath, imgBuf)) {
+          filesWritten.push(relAvatarPath);
+        }
+        return { cleanPath: `/avatars/${filename}?v=${vStamp}`, filesWritten };
       }
-      return null;
+      return { cleanPath: null, filesWritten };
     }
 
     if (trimmed.startsWith('/avatars/')) {
       const cleanFile = trimmed.split('?')[0].replace(/^\/avatars\//, '');
       const sourcePath = path.join(avatarsDir, cleanFile);
       const targetFilename = `${cleanKey}.jpg`;
-      const targetPath = path.join(avatarsDir, targetFilename);
+      const relTargetPath = `public/avatars/${targetFilename}`;
 
-      // If another avatar file was selected from the gallery for this person, copy it to public/avatars/[cleanKey].jpg
+      // If another avatar file was selected from the gallery for this person, copy it to public/avatars/[cleanKey].jpg if content differs
       if (cleanFile !== targetFilename && fs.existsSync(sourcePath)) {
         try {
-          fs.copyFileSync(sourcePath, targetPath);
-          return `/avatars/${targetFilename}?v=${vStamp}`;
+          const srcBuf = fs.readFileSync(sourcePath);
+          if (writeFileIfChanged(relTargetPath, srcBuf)) {
+            filesWritten.push(relTargetPath);
+          }
+          return { cleanPath: `/avatars/${targetFilename}?v=${vStamp}`, filesWritten };
         } catch {}
       }
 
-      return trimmed.includes('?v=') ? trimmed : `/avatars/${cleanFile}?v=${vStamp}`;
+      return { cleanPath: trimmed, filesWritten };
     }
 
-    return trimmed;
+    return { cleanPath: trimmed, filesWritten };
   }
 
-  function updateAvatarsManifest(vStamp: number): void {
+  function updateAvatarsManifest(updatedFileUrls?: Record<string, string>): string[] {
+    const written: string[] = [];
     try {
-      if (!fs.existsSync(avatarsDir)) return;
+      if (!fs.existsSync(avatarsDir)) return written;
+      const manifestRelPath = 'public/avatars-manifest.json';
+      const manifestFullPath = path.resolve(__dirname, manifestRelPath);
+      const existingUrlByFilename = new Map<string, string>();
+      if (fs.existsSync(manifestFullPath)) {
+        try {
+          const existingArr = JSON.parse(fs.readFileSync(manifestFullPath, 'utf-8'));
+          if (Array.isArray(existingArr)) {
+            for (const item of existingArr) {
+              if (item && typeof item.filename === 'string' && typeof item.url === 'string') {
+                existingUrlByFilename.set(item.filename, item.url);
+              }
+            }
+          }
+        } catch {}
+      }
+
       const files = fs.readdirSync(avatarsDir)
         .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f))
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-      const manifest = files.map((filename) => ({
-        filename,
-        url: `/avatars/${filename}?v=${vStamp}`,
-      }));
-      const manifestPath = path.resolve(__dirname, 'public/avatars-manifest.json');
-      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+
+      const manifest = files.map((filename) => {
+        const overrideUrl = updatedFileUrls?.[filename];
+        const prevUrl = existingUrlByFilename.get(filename);
+        return {
+          filename,
+          url: overrideUrl || prevUrl || `/avatars/${filename}`
+        };
+      });
+
+      const nextContent = JSON.stringify(manifest, null, 2);
+      if (writeFileIfChanged(manifestRelPath, nextContent)) {
+        written.push(manifestRelPath);
+      }
     } catch {}
+    return written;
   }
 
   // 1. API: Upload Avatar — saves file directly to public/avatars/[key].jpg and records /avatars/[key].jpg?v=[timestamp] in JSON files
@@ -439,7 +387,7 @@ async function startServer() {
       }
 
       const vStamp = getServerSafeTimestamp();
-      const cleanAvatarPath = savePhotoToAvatarsDirAndGetCleanPath(key, dataUrl, vStamp);
+      const { cleanPath: cleanAvatarPath, filesWritten } = savePhotoToAvatarsDirAndGetCleanPath(key, dataUrl, vStamp);
       if (!cleanAvatarPath) {
         return res.status(400).json({ error: 'Invalid dataUrl format' });
       }
@@ -453,34 +401,51 @@ async function startServer() {
             const raw = fs.readFileSync(fullPath, 'utf-8');
             const parsed = JSON.parse(raw);
             const targetObj = parsed.familyData ? parsed.familyData : parsed;
+            let entryChanged = filesWritten.length > 0;
+
             if (key.startsWith('arch_') || key.startsWith('photo_')) {
               if (Array.isArray(targetObj.archivalPhotos)) {
-                targetObj.archivalPhotos = targetObj.archivalPhotos.map((ap: any) =>
-                  ap && ap.id === key ? { ...ap, url: cleanAvatarPath } : ap
-                );
+                targetObj.archivalPhotos = targetObj.archivalPhotos.map((ap: any) => {
+                  if (ap && ap.id === key && ap.url !== cleanAvatarPath) {
+                    entryChanged = true;
+                    return { ...ap, url: cleanAvatarPath };
+                  }
+                  return ap;
+                });
               }
             } else {
               if (!targetObj.photos) targetObj.photos = {};
-              targetObj.photos[key] = cleanAvatarPath;
+              if (targetObj.photos[key] !== cleanAvatarPath) {
+                targetObj.photos[key] = cleanAvatarPath;
+                entryChanged = true;
+              }
             }
-            targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
+
+            if (entryChanged) {
+              targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
+            }
             latestFamilyData = targetObj;
-            fs.writeFileSync(fullPath, JSON.stringify(parsed, null, 2), 'utf-8');
+            const nextSerialized = JSON.stringify(parsed, null, 2);
+            if (writeFileIfChanged(p, nextSerialized)) {
+              filesWritten.push(p);
+            }
           } catch (e) {
             console.error(`Error updating ${p}:`, e);
           }
         }
       }
 
-      updateAvatarsManifest(vStamp);
+      const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '');
+      const manifestWritten = updateAvatarsManifest(
+        filesWritten.length > 0 ? { [`${cleanKey}.jpg`]: cleanAvatarPath } : undefined
+      );
+      filesWritten.push(...manifestWritten);
 
-      if (latestFamilyData) {
+      if (latestFamilyData && filesWritten.length > 0) {
         syncToFirestoreFromServer(latestFamilyData).catch(() => {});
       }
 
-      autoGitCommitAndPush(`feat(media): auto-update image ${key} in public/avatars and publish`).catch(() => {});
-
-      return res.json({ success: true, url: cleanAvatarPath });
+      return res.json({ success: true, url: cleanAvatarPath, filesWritten });
     } catch (err: any) {
       console.error('Error in /api/upload-avatar:', err);
       return res.status(500).json({ error: err.message || 'Failed to save avatar' });
@@ -496,7 +461,7 @@ async function startServer() {
       }
 
       const vStamp = getServerSafeTimestamp();
-      removeAvatarFileFromDiskServer(key);
+      const filesWritten = removeAvatarFileFromDiskServer(key);
 
       let latestFamilyData: any = null;
       for (const p of TARGET_JSON_FILES) {
@@ -506,38 +471,52 @@ async function startServer() {
             const raw = fs.readFileSync(fullPath, 'utf-8');
             const parsed = JSON.parse(raw);
             const targetObj = parsed.familyData ? parsed.familyData : parsed;
-            if (targetObj.photos && typeof targetObj.photos === 'object') {
+            let entryDeleted = filesWritten.length > 0;
+            if (targetObj.photos && typeof targetObj.photos === 'object' && key in targetObj.photos) {
               delete targetObj.photos[key];
+              entryDeleted = true;
             }
-            targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
+            if (entryDeleted) {
+              targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
+            }
             latestFamilyData = targetObj;
-            fs.writeFileSync(fullPath, JSON.stringify(parsed, null, 2), 'utf-8');
+            const nextSerialized = JSON.stringify(parsed, null, 2);
+            if (writeFileIfChanged(p, nextSerialized)) {
+              filesWritten.push(p);
+            }
           } catch (e) {
             console.error(`Error deleting avatar in ${p}:`, e);
           }
         }
       }
 
-      updateAvatarsManifest(vStamp);
+      const manifestWritten = updateAvatarsManifest();
+      filesWritten.push(...manifestWritten);
 
-      if (latestFamilyData) {
+      if (latestFamilyData && filesWritten.length > 0) {
         syncToFirestoreFromServer({
           ...latestFamilyData,
           photos: { ...(latestFamilyData.photos || {}), [key]: '' }
         }).catch(() => {});
       }
 
-      autoGitCommitAndPush(`feat(media): delete image ${key} from public/avatars and JSON files`).catch(() => {});
-
-      return res.json({ success: true, deletedKey: key, updatedAt: vStamp });
+      return res.json({ success: true, deletedKey: key, updatedAt: vStamp, filesWritten });
     } catch (err: any) {
       console.error('Error in /api/delete-avatar:', err);
       return res.status(500).json({ error: err.message || 'Failed to delete avatar' });
     }
   });
 
-  // Helper to apply and persist incoming state across all 3 JSON files (initialTreeData.json, initialTreeData.backup.json, fardan_family_tree_backup.json)
-  function persistStateToTargetJsonFiles(rawPayload: any): { syncedFamilyData: any; updatedAt: number } {
+  // Helper to apply and persist incoming state across all 3 JSON files (only writing when content changes)
+  function persistStateToTargetJsonFiles(
+    rawPayload: any,
+    opts?: { ignoreTimestampOnly?: boolean }
+  ): {
+    syncedFamilyData: any;
+    updatedAt: number;
+    filesWritten: string[];
+  } {
+    const filesWrittenSet = new Set<string>();
     const state = rawPayload?.familyData ? rawPayload.familyData : rawPayload;
     const vStamp = getServerSafeTimestamp(state?.updatedAt);
     const incomingPhotos = state?.photos || {};
@@ -553,11 +532,22 @@ async function startServer() {
       }
     }
 
+    for (const delKey of explicitlyDeletedPhotoKeys) {
+      const removed = removeAvatarFileFromDiskServer(delKey);
+      removed.forEach((f) => filesWrittenSet.add(f));
+    }
+
+    const updatedManifestUrls: Record<string, string> = {};
+
     const processedArchivalPhotos = Array.isArray(state?.archivalPhotos)
       ? state.archivalPhotos.map((ap: any) => {
           if (ap && ap.id && typeof ap.url === 'string' && ap.url.startsWith('data:image/')) {
-            const cleanUrl = savePhotoToAvatarsDirAndGetCleanPath(ap.id, ap.url, vStamp);
-            if (cleanUrl) return { ...ap, url: cleanUrl };
+            const { cleanPath, filesWritten: fw } = savePhotoToAvatarsDirAndGetCleanPath(ap.id, ap.url, vStamp);
+            fw.forEach((f) => filesWrittenSet.add(f));
+            if (cleanPath) {
+              updatedManifestUrls[`${ap.id.replace(/[^a-zA-Z0-9_-]/g, '')}.jpg`] = cleanPath;
+              return { ...ap, url: cleanPath };
+            }
           }
           return ap;
         })
@@ -568,7 +558,12 @@ async function startServer() {
           if (!nf || !nf.id) return nf;
           let updatedPhoto = nf.photo;
           if (typeof updatedPhoto === 'string' && updatedPhoto.startsWith('data:image/')) {
-            updatedPhoto = savePhotoToAvatarsDirAndGetCleanPath(nf.id, updatedPhoto, vStamp) || updatedPhoto;
+            const { cleanPath, filesWritten: fw } = savePhotoToAvatarsDirAndGetCleanPath(nf.id, updatedPhoto, vStamp);
+            fw.forEach((f) => filesWrittenSet.add(f));
+            if (cleanPath) {
+              updatedManifestUrls[`${nf.id.replace(/[^a-zA-Z0-9_-]/g, '')}.jpg`] = cleanPath;
+              updatedPhoto = cleanPath;
+            }
           }
           return {
             ...nf,
@@ -590,10 +585,6 @@ async function startServer() {
         const incTime = normalizeServerTimestamp(state?.updatedAt) || vStamp;
         finalUpdatedAt = getServerSafeTimestamp(incTime, baseTime);
 
-        for (const delKey of explicitlyDeletedPhotoKeys) {
-          removeAvatarFileFromDiskServer(delKey);
-        }
-
         const mergedMembers = deduplicateServerMembers(
           [
             ...(existingData?.members || []),
@@ -602,16 +593,23 @@ async function startServer() {
           true
         );
 
-        // Strictly preserve all existing valid photos as /avatars/[id].jpg?v=[timestamp], extract any incoming Base64 to public/avatars/, and only delete explicitly removed photos
+        // Preserve all existing valid photos without altering unchanged URLs, extract incoming Base64 to public/avatars/, and only delete explicitly removed photos
         const mergedPhotos: Record<string, string> = {};
         for (const [ek, ev] of Object.entries(existingData?.photos || {})) {
           if (explicitlyDeletedPhotoKeys.has(ek)) {
-            delete mergedPhotos[ek];
             continue;
           }
           if (isValidServerPhotoEntry(ek, ev)) {
-            const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(ek, ev, finalUpdatedAt);
-            if (cleanPath) mergedPhotos[ek] = cleanPath;
+            if (ev.trim().startsWith('data:image/')) {
+              const { cleanPath, filesWritten: fw } = savePhotoToAvatarsDirAndGetCleanPath(ek, ev, finalUpdatedAt);
+              fw.forEach((f) => filesWrittenSet.add(f));
+              if (cleanPath) {
+                updatedManifestUrls[`${ek.replace(/[^a-zA-Z0-9_-]/g, '')}.jpg`] = cleanPath;
+                mergedPhotos[ek] = cleanPath;
+              }
+            } else {
+              mergedPhotos[ek] = ev.trim();
+            }
           }
         }
         for (const [pk, pv] of Object.entries(incomingPhotos)) {
@@ -620,21 +618,31 @@ async function startServer() {
             continue;
           }
           if (isValidServerPhotoEntry(pk, pv)) {
-            const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(pk, pv, finalUpdatedAt);
-            if (cleanPath) {
-              const existingUrl = mergedPhotos[pk];
-              if (existingUrl && existingUrl.startsWith('/avatars/') && cleanPath.startsWith('/avatars/')) {
-                const exV = getServerAvatarVersion(existingUrl);
-                const inV = getServerAvatarVersion(cleanPath);
-                mergedPhotos[pk] = inV >= exV ? cleanPath : existingUrl;
-              } else {
+            if (pv.trim().startsWith('data:image/')) {
+              const { cleanPath, filesWritten: fw } = savePhotoToAvatarsDirAndGetCleanPath(pk, pv, finalUpdatedAt);
+              fw.forEach((f) => filesWrittenSet.add(f));
+              if (cleanPath) {
+                updatedManifestUrls[`${pk.replace(/[^a-zA-Z0-9_-]/g, '')}.jpg`] = cleanPath;
                 mergedPhotos[pk] = cleanPath;
+              }
+            } else {
+              const { cleanPath, filesWritten: fw } = savePhotoToAvatarsDirAndGetCleanPath(pk, pv, finalUpdatedAt);
+              fw.forEach((f) => filesWrittenSet.add(f));
+              if (cleanPath) {
+                const existingUrl = mergedPhotos[pk];
+                if (existingUrl && existingUrl.startsWith('/avatars/') && cleanPath.startsWith('/avatars/')) {
+                  const exV = getServerAvatarVersion(existingUrl);
+                  const inV = getServerAvatarVersion(cleanPath);
+                  mergedPhotos[pk] = inV >= exV ? cleanPath : existingUrl;
+                } else {
+                  mergedPhotos[pk] = cleanPath;
+                }
               }
             }
           }
         }
 
-        // Merge overrides authoritatively from incoming state
+        // Merge overrides authoritatively without bumping `at` when an override did not change
         const allOverKeys = new Set([
           ...Object.keys(existingData?.over || {}),
           ...Object.keys(state?.over || {})
@@ -643,12 +651,22 @@ async function startServer() {
         for (const k of allOverKeys) {
           const bOv = existingData?.over?.[k] || {};
           const iOv = state?.over?.[k] || {};
-          const bAt = normalizeServerTimestamp(bOv.at) || baseTime;
-          const iAt = normalizeServerTimestamp(iOv.at) || incTime;
+          const bAt = normalizeServerTimestamp(bOv.at);
+          const iAt = normalizeServerTimestamp(iOv.at);
           const useInc = k in (state?.over || {});
-          mergedOver[k] = useInc
-            ? { ...bOv, ...iOv, at: Math.max(bAt, iAt, finalUpdatedAt) || undefined }
-            : { ...iOv, ...bOv, at: Math.max(bAt, iAt) || undefined };
+          const candidate = useInc ? { ...bOv, ...iOv } : { ...iOv, ...bOv };
+          const bWithoutAt = { ...bOv, at: undefined };
+          const candWithoutAt = { ...candidate, at: undefined };
+          const overContentChanged = JSON.stringify(bWithoutAt) !== JSON.stringify(candWithoutAt);
+          const resolvedAt = overContentChanged
+            ? (Math.max(bAt, iAt, finalUpdatedAt) || undefined)
+            : (iAt || bAt || undefined);
+          if (resolvedAt !== undefined) {
+            mergedOver[k] = { ...candidate, at: resolvedAt };
+          } else {
+            const { at: _unusedAt, ...rest } = candidate;
+            mergedOver[k] = rest;
+          }
         }
 
         if (!mergedOver.o4 || !mergedOver.o4.parent || mergedOver.o4.parent === 'oF') {
@@ -725,7 +743,7 @@ async function startServer() {
         }
         const mergedNotableFigures = Array.from(notablesMap.values());
 
-        const updatedData = {
+        const candidateWithoutTs = {
           members: mergedMembers,
           photos: mergedPhotos,
           over: mergedOver,
@@ -740,8 +758,30 @@ async function startServer() {
           mothers: state?.mothers
             ? { ...(existingData?.mothers || {}), ...state.mothers }
             : (existingData?.mothers || {}),
-          contactInfo: state?.contactInfo ? state.contactInfo : (existingData?.contactInfo || {}),
-          updatedAt: finalUpdatedAt
+          contactInfo: state?.contactInfo ? state.contactInfo : (existingData?.contactInfo || {})
+        };
+
+        const existingWithoutTs = {
+          members: existingData?.members || [],
+          photos: existingData?.photos || {},
+          over: existingData?.over || {},
+          removed: existingData?.removed || [],
+          archivalPhotos: existingData?.archivalPhotos || [],
+          notableFigures: existingData?.notableFigures || [],
+          spouses: existingData?.spouses || {},
+          mothers: existingData?.mothers || {},
+          contactInfo: existingData?.contactInfo || {}
+        };
+
+        const dataBodyChanged =
+          filesWrittenSet.size > 0 ||
+          JSON.stringify(candidateWithoutTs) !== JSON.stringify(existingWithoutTs);
+
+        const resolvedUpdatedAt = dataBodyChanged ? finalUpdatedAt : (existingData?.updatedAt || finalUpdatedAt);
+
+        const updatedData = {
+          ...candidateWithoutTs,
+          updatedAt: resolvedUpdatedAt
         };
 
         if (parsed.familyData) {
@@ -751,12 +791,23 @@ async function startServer() {
         }
 
         syncedFamilyData = updatedData;
-        fs.writeFileSync(fullPath, JSON.stringify(parsed, null, 2), 'utf-8');
+        const nextSerialized = JSON.stringify(parsed, null, 2);
+        if (writeFileIfChanged(p, nextSerialized)) {
+          filesWrittenSet.add(p);
+        }
       }
     }
 
-    updateAvatarsManifest(finalUpdatedAt);
-    return { syncedFamilyData, updatedAt: finalUpdatedAt };
+    const manifestWritten = updateAvatarsManifest(
+      Object.keys(updatedManifestUrls).length > 0 ? updatedManifestUrls : undefined
+    );
+    manifestWritten.forEach((f) => filesWrittenSet.add(f));
+
+    return {
+      syncedFamilyData,
+      updatedAt: syncedFamilyData?.updatedAt || finalUpdatedAt,
+      filesWritten: Array.from(filesWrittenSet)
+    };
   }
 
   // Direct Disk Write Bridge: /api/save-tree and /__save_tree_to_disk
@@ -766,14 +817,18 @@ async function startServer() {
       if (!state || typeof state !== 'object') {
         return res.status(400).json({ error: 'Invalid tree state' });
       }
-      const { syncedFamilyData, updatedAt } = persistStateToTargetJsonFiles(state);
-      if (syncedFamilyData) {
+      const { syncedFamilyData, updatedAt, filesWritten } = persistStateToTargetJsonFiles(state);
+      if (syncedFamilyData && filesWritten.length > 0) {
         syncToFirestoreFromServer(syncedFamilyData).catch(() => {});
       }
-      autoGitCommitAndPush('feat(tree): direct disk save to initialTreeData.json and fardan_family_tree_backup.json').catch(() => {});
+      const effectiveFilesWritten =
+        filesWritten.length > 0
+          ? filesWritten
+          : (state.isPublishAction && sessionFilesWritten.size > 0 ? Array.from(sessionFilesWritten) : []);
       return res.json({
         success: true,
         updatedAt,
+        filesWritten: effectiveFilesWritten,
         membersCount: syncedFamilyData?.members?.length || 0,
         photosCount: Object.keys(syncedFamilyData?.photos || {}).length,
         photos: syncedFamilyData?.photos || {}
@@ -786,11 +841,9 @@ async function startServer() {
 
   app.post('/api/save-tree', handleSaveTreeEndpoint);
   app.post('/__save_tree_to_disk', handleSaveTreeEndpoint);
-
-  // 2. API: Save full family state to source files, sync to Firestore, and push to GitHub immediately
   app.post('/api/save-family-data', handleSaveTreeEndpoint);
 
-  // Real-time Server-Side Firestore Listener
+  // Real-time Server-Side Firestore Listener (syncs metadata without running any git commands)
   if (serverDb) {
     try {
       onSnapshot(
@@ -811,46 +864,10 @@ async function startServer() {
               const localTs = normalizeServerTimestamp(localFd?.updatedAt);
               if (cloudTs > localTs) {
                 persistStateToTargetJsonFiles(cloudState);
-                autoGitCommitAndPush('feat(cloud-sync): auto-commit admin updates from Firestore to GitHub').catch(() => {});
               }
             }
           } catch (e) {
             console.warn('Server Firestore mirror notice:', e);
-          }
-        },
-        () => {}
-      );
-
-      // Also listen to family_tree/custom_avatars so any photo uploaded on alfardanfamily.com or another device
-      // is automatically extracted to public/avatars/[key].jpg on Google AI Studio's disk and recorded in initialTreeData.json!
-      onSnapshot(
-        doc(serverDb, 'family_tree', 'custom_avatars'),
-        (snap) => {
-          if (!snap.exists()) return;
-          const data = snap.data();
-          if (!data || typeof data.avatars !== 'object') return;
-          const avatarsMap = data.avatars as Record<string, string>;
-          const vStamp = normalizeServerTimestamp(data.updatedAt) || Date.now();
-          let anyExtracted = false;
-          const extractedPhotos: Record<string, string> = {};
-
-          for (const [key, val] of Object.entries(avatarsMap)) {
-            if (typeof val === 'string' && val.startsWith('data:image/')) {
-              const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(key, val, vStamp);
-              if (cleanPath) {
-                extractedPhotos[key] = cleanPath;
-                anyExtracted = true;
-              }
-            }
-          }
-
-          if (anyExtracted) {
-            try {
-              persistStateToTargetJsonFiles({
-                photos: extractedPhotos,
-                updatedAt: vStamp
-              });
-            } catch {}
           }
         },
         () => {}
@@ -896,73 +913,21 @@ async function startServer() {
     }
   });
 
-  // 5. API: Direct Admin Sync & Publish to GitHub (deploying directly to alfardanfamily.com)
-  app.post('/api/publish-to-github', async (req, res) => {
+  // 5. API: Return the list of files actually changed on disk (executes NO git commands)
+  app.post('/api/publish-to-github', (req, res) => {
     try {
-      const { token } = req.body || {};
-      if (token && typeof token === 'string' && token.trim()) {
-        fs.writeFileSync(GITHUB_TOKEN_FILE, token.trim(), 'utf-8');
+      let currentWritten: string[] = [];
+      if (req.body && typeof req.body === 'object' && (req.body.familyData || req.body.members)) {
+        const result = persistStateToTargetJsonFiles(req.body);
+        currentWritten = result.filesWritten;
       }
-      pendingGitSyncMsg = 'feat(publish): manual admin publish to alfardanfamily.com';
-      if (gitSyncDebounceTimer) clearTimeout(gitSyncDebounceTimer);
-      const stdout = await executeNextGitSync();
-      const hasToken = !!getGitHubToken();
-      const isPushed = hasToken && !stdout.includes('fatal:') && !stdout.includes('error:') && !stdout.includes('NO_TOKEN_CONFIGURED');
+      const allChangedFiles = Array.from(new Set([...sessionFilesWritten, ...currentWritten]));
       return res.json({
         success: true,
-        isPushed,
-        hasToken,
-        message: isPushed
-          ? 'تم اعتماد ونشر كافة التعديلات والصور إلى GitHub بنجاح! يتم الآن بناء ونشر الموقع الرسمي alfardanfamily.com تلقائياً 🚀'
-          : (hasToken
-              ? 'تم الحفظ والالتزام محلياً، ولكن تعذر الدفع لـ GitHub. يرجى مراجعة صلاحيات الرمز (PAT repo scope)'
-              : 'تم حفظ كافة التعديلات والصور محلياً في ملفات المشروع و public/avatars/ بنجاح. يمكنك الآن الضغط على أداة GitHub بأعلى AI Studio لعمل Commit & Push.'),
-        stdout
+        filesWritten: allChangedFiles
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message });
-    }
-  });
-
-  // API: Get GitHub sync status
-  app.get('/api/github-sync-status', (_req, res) => {
-    try {
-      const hasToken = !!getGitHubToken();
-      exec('git log origin/main..HEAD --oneline', { cwd: __dirname }, (err, stdout) => {
-        const unpushedCount = (!err && stdout && stdout.trim()) ? stdout.trim().split('\n').length : 0;
-        return res.json({
-          hasToken,
-          unpushedCount,
-          isConfigured: true,
-          repository: 'alialfardan/alfardan-family'
-        });
-      });
-    } catch (e: any) {
-      return res.status(500).json({ error: e.message });
-    }
-  });
-
-  // API: Save GitHub Token and immediately push
-  app.post('/api/save-github-token', async (req, res) => {
-    try {
-      const { token } = req.body || {};
-      if (!token || typeof token !== 'string' || !token.trim()) {
-        return res.status(400).json({ error: 'Token is required' });
-      }
-      fs.writeFileSync(GITHUB_TOKEN_FILE, token.trim(), 'utf-8');
-      pendingGitSyncMsg = 'feat(sync): publish updates to alfardanfamily.com via GitHub Token';
-      if (gitSyncDebounceTimer) clearTimeout(gitSyncDebounceTimer);
-      const stdout = await executeNextGitSync();
-      const success = !stdout.includes('fatal:') && !stdout.includes('error:') && !stdout.includes('NO_TOKEN_CONFIGURED');
-      return res.json({
-        success,
-        output: stdout,
-        message: success
-          ? 'تم حفظ الرمز ونشر التعديلات إلى GitHub بنجاح! ستظهر التحديثات على alfardanfamily.com خلال دقائق معدودة 🚀'
-          : 'تم حفظ الرمز، ولكن واجه GitHub مشكلة في صلاحية الرمز. يرجى التأكد من أن الرمز يحمل صلاحية (repo scope)'
-      });
-    } catch (e: any) {
-      return res.status(500).json({ error: e.message });
+      return res.status(500).json({ error: err.message, filesWritten: [] });
     }
   });
 

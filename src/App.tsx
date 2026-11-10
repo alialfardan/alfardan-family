@@ -13,9 +13,6 @@ import {
   getMonotonicTimestamp,
   normalizeTimestamp,
   loadCustomAvatarsBackup,
-  saveCustomAvatarBackup,
-  removeCustomAvatarBackup,
-  isValidPhotoEntry,
   saveTreeToDisk,
   uploadMemberAvatarToDisk,
   deleteMemberAvatarFromDisk
@@ -27,15 +24,12 @@ import {
   subscribeToContactInfo,
   subscribeToArchivalPhotos,
   subscribeToNotableFigures,
-  subscribeToCustomAvatars,
   syncFamilyStateToCloud,
   syncContactInfoToCloud,
   syncArchivalPhotoToCloud,
   deleteArchivalPhotoFromCloud,
   syncNotableFigureToCloud,
   deleteNotableFigureFromCloud,
-  syncCustomAvatarToCloud,
-  deleteCustomAvatarFromCloud,
   ensureCloudInitialized,
   markPhotoDeletedForCloud,
   clearPhotoDeletedForCloud
@@ -68,7 +62,7 @@ import {
   NotificationPermissionState
 } from './services/notificationService';
 import { WelcomeDisclaimerModal } from './components/WelcomeDisclaimerModal';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle } from 'lucide-react';
 
 export default function App() {
   // Family Data State
@@ -343,34 +337,11 @@ export default function App() {
       });
     });
 
-    // Subscribe to dedicated family_tree/custom_avatars relay for instant cross-site avatar image sync
-    const unsubscribeCustomAvatars = subscribeToCustomAvatars((cloudAvatars) => {
-      const existingBackups = loadCustomAvatarsBackup();
-      const newKeysToWrite: Array<[string, string]> = [];
-      for (const [k, base64] of Object.entries(cloudAvatars)) {
-        if (!base64 || base64 === '') {
-          removeCustomAvatarBackup(k);
-        } else if (base64.startsWith('data:image/')) {
-          clearFailedAvatarUrl(k);
-          if (existingBackups[k] !== base64) {
-            saveCustomAvatarBackup(k, base64);
-            newKeysToWrite.push([k, base64]);
-          }
-        }
-      }
-      if (!isStaticProductionHost() && newKeysToWrite.length > 0) {
-        for (const [k, base64] of newKeysToWrite) {
-          uploadMemberAvatarToDisk(k, base64).catch(() => {});
-        }
-      }
-    });
-
     return () => {
       unsubscribeState();
       unsubscribeArchival();
       unsubscribeNotables();
       unsubscribeContact();
-      unsubscribeCustomAvatars();
     };
   }, []);
 
@@ -535,13 +506,13 @@ export default function App() {
   }, []);
 
   // Toast Notification
-  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'info' | 'warning' } | null>(null);
 
-  const showToast = useCallback((message: string, type: 'success' | 'info' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'info' | 'warning' = 'success') => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
-    }, 3200);
+    }, 4500);
   }, []);
 
   // Real-time Cloud Notifications Listener (Dual-path: SW system alert + In-App Toast)
@@ -689,9 +660,6 @@ export default function App() {
       if (hasPhoto && data.photo) {
         clearFailedAvatarUrl(newMemberKey);
         clearPhotoDeletedForCloud(newMemberKey);
-        if (data.photo.startsWith('data:image/')) {
-          syncCustomAvatarToCloud(newMemberKey, data.photo).catch(() => {});
-        }
         uploadMemberAvatarToDisk(newMemberKey, data.photo).catch(() => {});
       }
 
@@ -758,14 +726,10 @@ export default function App() {
 
       if (isPhotoExplicitlyRemoved) {
         markPhotoDeletedForCloud(key);
-        deleteCustomAvatarFromCloud(key).catch(() => {});
         deleteMemberAvatarFromDisk(key).catch(() => {});
       } else if (isNewOrUpdatedPhoto && finalPhoto) {
         clearFailedAvatarUrl(key);
         clearPhotoDeletedForCloud(key);
-        if (finalPhoto.startsWith('data:image/')) {
-          syncCustomAvatarToCloud(key, finalPhoto).catch(() => {});
-        }
         uploadMemberAvatarToDisk(key, finalPhoto).catch(() => {});
       }
 
@@ -1009,7 +973,6 @@ export default function App() {
     const targetKey = key || avatarGalleryModal.targetKey;
     if (!targetKey) return;
     markPhotoDeletedForCloud(targetKey);
-    deleteCustomAvatarFromCloud(targetKey).catch(() => {});
     deleteMemberAvatarFromDisk(targetKey).catch(() => {});
 
     setFamilyState(prev => {
@@ -1035,9 +998,6 @@ export default function App() {
     const key = avatarGalleryModal.targetKey;
     clearFailedAvatarUrl(key);
     clearPhotoDeletedForCloud(key);
-    if (url.startsWith('data:image/')) {
-      syncCustomAvatarToCloud(key, url).catch(() => {});
-    }
     await uploadMemberAvatarToDisk(key, url).catch(() => {});
 
     const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
@@ -1105,12 +1065,9 @@ export default function App() {
     const key = faceCropModal.targetKey;
     const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
 
-    // 1. Immediately sync Base64 to Firestore relay AND write physical .jpg file to public/avatars/[key].jpg on disk
+    // 1. Immediately write physical .jpg file to public/avatars/[key].jpg on disk
     clearFailedAvatarUrl(key);
     clearPhotoDeletedForCloud(key);
-    if (croppedDataUrl.startsWith('data:image/')) {
-      syncCustomAvatarToCloud(key, croppedDataUrl).catch(() => {});
-    }
     await uploadMemberAvatarToDisk(key, croppedDataUrl).catch(() => {});
 
     lastImmediateSyncAtRef.current = Date.now();
@@ -1700,20 +1657,16 @@ export default function App() {
       for (const [k, b64] of Object.entries(customBackups)) {
         if (cleanPhotos[k] && b64 && b64.startsWith('data:image/')) {
           await uploadMemberAvatarToDisk(k, b64).catch(() => {});
-          syncCustomAvatarToCloud(k, b64).catch(() => {});
         }
       }
 
       // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /api/save-tree
-      const diskSaved = await saveTreeToDisk(stateToSave, { replacePhotos: true });
+      const saveResult = await saveTreeToDisk(stateToSave, { replacePhotos: true, isPublishAction: true });
       saveStateToStorage(stateToSave);
 
-      // 2. Sync to Cloud Firestore instantly
+      // 2. Sync metadata to Cloud Firestore
       try {
         await syncFamilyStateToCloud(stateToSave);
-        for (const archItem of stateToSave.archivalPhotos || []) {
-          await syncArchivalPhotoToCloud(archItem).catch(() => {});
-        }
       } catch (cloudErr) {
         console.warn('Cloud sync on publish warning:', cloudErr);
       }
@@ -1721,14 +1674,14 @@ export default function App() {
       setFamilyState(stateToSave);
       setHasUnsavedServerChanges(false);
 
-      if (diskSaved) {
-        showToast('تم تحديث ملفات الصور في public/avatars/ وملفات المشروع (initialTreeData.json) و Firebase بنجاح! يمكنك الآن عمل Commit & Push 🚀', 'success');
+      if (saveResult.ok && saveResult.filesWritten.length > 0) {
+        showToast(`تم تحديث ${saveResult.filesWritten.length} ملف: ${saveResult.filesWritten.join('، ')}`, 'success');
       } else {
-        showToast('تم حفظ ونشر البيانات والصور سحابياً بنجاح! 🚀', 'success');
+        showToast('لم تُكتب الملفات على المشروع. افتح الموقع من معاينة AI Studio', 'warning');
       }
     } catch (err) {
       console.error('Error saving for publish:', err);
-      showToast('تم حفظ وتحديث الشجرة سحابياً 🚀', 'success');
+      showToast('لم تُكتب الملفات على المشروع. افتح الموقع من معاينة AI Studio', 'warning');
     } finally {
       setIsSavingForPublish(false);
     }
@@ -2166,8 +2119,18 @@ export default function App() {
 
       {/* Toast Banner */}
       {toast && (
-        <div className="fixed bottom-6 right-1/2 translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2.5 bg-slate-900 text-white text-xs font-semibold rounded-2xl shadow-2xl border border-slate-700 animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+        <div
+          className={`fixed bottom-6 right-1/2 translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-2.5 text-white text-xs font-semibold rounded-2xl shadow-2xl border animate-in fade-in slide-in-from-bottom-2 max-w-[92vw] ${
+            toast.type === 'warning'
+              ? 'bg-amber-600 border-amber-400'
+              : 'bg-slate-900 border-slate-700'
+          }`}
+        >
+          {toast.type === 'warning' ? (
+            <AlertTriangle className="w-4 h-4 text-white flex-shrink-0" />
+          ) : (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          )}
           <span>{toast.message}</span>
         </div>
       )}
