@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from 'firebase/firestore';
@@ -9,13 +10,40 @@ import { getFirestore, doc, setDoc, onSnapshot, setLogLevel } from 'firebase/fir
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Remove legacy .github_token file if it exists
-try {
-  const legacyTokenFile = path.resolve(__dirname, '.github_token');
-  if (fs.existsSync(legacyTokenFile)) {
-    fs.unlinkSync(legacyTokenFile);
+const GITHUB_OWNER = 'alialfardan';
+const GITHUB_REPO = 'alfardan-family';
+const GITHUB_BRANCH = 'main';
+const GITHUB_TOKEN_FILE = path.resolve(__dirname, '.github_token');
+
+function getGitHubToken(overrideToken?: string): string {
+  if (overrideToken && typeof overrideToken === 'string' && overrideToken.trim()) {
+    return overrideToken.trim();
   }
-} catch {}
+  if (process.env.GITHUB_TOKEN && process.env.GITHUB_TOKEN.trim()) {
+    return process.env.GITHUB_TOKEN.trim();
+  }
+  try {
+    if (fs.existsSync(GITHUB_TOKEN_FILE)) {
+      const t = fs.readFileSync(GITHUB_TOKEN_FILE, 'utf-8').trim();
+      if (t) return t;
+    }
+  } catch {}
+  return '';
+}
+
+function saveGitHubTokenToDisk(token: string): void {
+  if (!token || !token.trim()) return;
+  try {
+    fs.writeFileSync(GITHUB_TOKEN_FILE, token.trim(), 'utf-8');
+  } catch (e) {
+    console.warn('Failed to save .github_token:', e);
+  }
+}
+
+function computeGitBlobSha(buf: Buffer): string {
+  const header = Buffer.from(`blob ${buf.length}\0`, 'utf-8');
+  return crypto.createHash('sha1').update(header).update(buf).digest('hex');
+}
 
 // Initialize server-side Firestore client so backend API saves also guarantee instant Firestore metadata sync
 let serverDb: ReturnType<typeof getFirestore> | null = null;
@@ -211,8 +239,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Track files whose content actually changed on disk
+  // Track files whose content actually changed on disk and any explicitly deleted avatar files
   const sessionFilesWritten = new Set<string>();
+  const deletedAvatarRelPaths = new Set<string>();
 
   // Body parser with 50MB limit for image uploads
   app.use(express.json({ limit: '50mb' }));
@@ -222,7 +251,7 @@ async function startServer() {
   app.use((_req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-GitHub-Token');
     if (_req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
@@ -260,6 +289,7 @@ async function startServer() {
     }
     fs.writeFileSync(fullPath, newBuf);
     sessionFilesWritten.add(relPath);
+    deletedAvatarRelPaths.delete(relPath);
     return true;
   }
 
@@ -275,6 +305,7 @@ async function startServer() {
           fs.unlinkSync(filePath);
           removedFiles.push(relPath);
           sessionFilesWritten.add(relPath);
+          deletedAvatarRelPaths.add(relPath);
         } catch {}
       }
     }
@@ -378,140 +409,306 @@ async function startServer() {
     return written;
   }
 
-  // 1. API: Upload Avatar — saves file directly to public/avatars/[key].jpg and records /avatars/[key].jpg?v=[timestamp] in JSON files
-  app.post('/api/upload-avatar', (req, res) => {
-    try {
-      const { key, dataUrl } = req.body;
-      if (!key || !dataUrl) {
-        return res.status(400).json({ error: 'Missing key or dataUrl' });
+  // Collect all tracked local project files (JSON data files + manifest + all public/avatars/* images)
+  function getTrackedLocalFiles(): string[] {
+    const tracked = [
+      ...TARGET_JSON_FILES,
+      'public/avatars-manifest.json'
+    ];
+    if (fs.existsSync(avatarsDir)) {
+      const avatarFiles = fs.readdirSync(avatarsDir)
+        .filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      for (const f of avatarFiles) {
+        tracked.push(`public/avatars/${f}`);
       }
+    }
+    return tracked;
+  }
 
-      const vStamp = getServerSafeTimestamp();
-      const { cleanPath: cleanAvatarPath, filesWritten } = savePhotoToAvatarsDirAndGetCleanPath(key, dataUrl, vStamp);
-      if (!cleanAvatarPath) {
-        return res.status(400).json({ error: 'Invalid dataUrl format' });
-      }
+  // Compare local tracked files against GitHub main branch via GitHub REST Git Data API
+  async function inspectGitHubMainDiff(token: string): Promise<{
+    latestCommitSha: string;
+    baseTreeSha: string;
+    changedFiles: Array<{ relPath: string; fullPath: string; localSha: string }>;
+    deletedFiles: string[];
+  }> {
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      Authorization: `Bearer ${token}`,
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'AlFardan-Family-Tree-Server'
+    };
 
-      let latestFamilyData: any = null;
+    // 1. Get heads/main ref
+    const refRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/ref/heads/${GITHUB_BRANCH}`,
+      { headers }
+    );
+    if (!refRes.ok) {
+      const errText = await refRes.text();
+      throw new Error(`GitHub API ref error (${refRes.status}): ${errText}`);
+    }
+    const refData: any = await refRes.json();
+    const latestCommitSha: string = refData?.object?.sha;
+    if (!latestCommitSha) {
+      throw new Error('Could not resolve latest commit SHA on main branch');
+    }
 
-      for (const p of TARGET_JSON_FILES) {
-        const fullPath = path.resolve(__dirname, p);
-        if (fs.existsSync(fullPath)) {
-          try {
-            const raw = fs.readFileSync(fullPath, 'utf-8');
-            const parsed = JSON.parse(raw);
-            const targetObj = parsed.familyData ? parsed.familyData : parsed;
-            let entryChanged = filesWritten.length > 0;
+    // 2. Get commit object to find baseTreeSha
+    const commitRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/commits/${latestCommitSha}`,
+      { headers }
+    );
+    if (!commitRes.ok) {
+      const errText = await commitRes.text();
+      throw new Error(`GitHub API commit error (${commitRes.status}): ${errText}`);
+    }
+    const commitData: any = await commitRes.json();
+    const baseTreeSha: string = commitData?.tree?.sha;
+    if (!baseTreeSha) {
+      throw new Error('Could not resolve base tree SHA on main branch');
+    }
 
-            if (key.startsWith('arch_') || key.startsWith('photo_')) {
-              if (Array.isArray(targetObj.archivalPhotos)) {
-                targetObj.archivalPhotos = targetObj.archivalPhotos.map((ap: any) => {
-                  if (ap && ap.id === key && ap.url !== cleanAvatarPath) {
-                    entryChanged = true;
-                    return { ...ap, url: cleanAvatarPath };
-                  }
-                  return ap;
-                });
-              }
-            } else {
-              if (!targetObj.photos) targetObj.photos = {};
-              if (targetObj.photos[key] !== cleanAvatarPath) {
-                targetObj.photos[key] = cleanAvatarPath;
-                entryChanged = true;
-              }
-            }
-
-            if (entryChanged) {
-              targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
-            }
-            latestFamilyData = targetObj;
-            const nextSerialized = JSON.stringify(parsed, null, 2);
-            if (writeFileIfChanged(p, nextSerialized)) {
-              filesWritten.push(p);
-            }
-          } catch (e) {
-            console.error(`Error updating ${p}:`, e);
-          }
+    // 3. Get recursive tree from GitHub main branch
+    const treeRes = await fetch(
+      `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees/${baseTreeSha}?recursive=1`,
+      { headers }
+    );
+    if (!treeRes.ok) {
+      const errText = await treeRes.text();
+      throw new Error(`GitHub API tree error (${treeRes.status}): ${errText}`);
+    }
+    const treeData: any = await treeRes.json();
+    const remoteBlobShas = new Map<string, string>();
+    if (Array.isArray(treeData?.tree)) {
+      for (const item of treeData.tree) {
+        if (item && item.type === 'blob' && typeof item.path === 'string' && typeof item.sha === 'string') {
+          remoteBlobShas.set(item.path, item.sha);
         }
       }
+    }
 
-      const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '');
-      const manifestWritten = updateAvatarsManifest(
-        filesWritten.length > 0 ? { [`${cleanKey}.jpg`]: cleanAvatarPath } : undefined
+    const changedFiles: Array<{ relPath: string; fullPath: string; localSha: string }> = [];
+    for (const relPath of getTrackedLocalFiles()) {
+      const fullPath = path.resolve(__dirname, relPath);
+      if (!fs.existsSync(fullPath)) continue;
+      const buf = fs.readFileSync(fullPath);
+      const localSha = computeGitBlobSha(buf);
+      const remoteSha = remoteBlobShas.get(relPath);
+      if (localSha !== remoteSha) {
+        changedFiles.push({ relPath, fullPath, localSha });
+      }
+    }
+
+    const deletedFiles: string[] = [];
+    for (const delRelPath of deletedAvatarRelPaths) {
+      if (remoteBlobShas.has(delRelPath) && !fs.existsSync(path.resolve(__dirname, delRelPath))) {
+        deletedFiles.push(delRelPath);
+      }
+    }
+
+    return {
+      latestCommitSha,
+      baseTreeSha,
+      changedFiles,
+      deletedFiles
+    };
+  }
+
+  // Push all modified/new/deleted tracked files directly to GitHub main branch via GitHub REST API
+  let isGitHubPushInProgress = false;
+  async function pushChangesToGitHubViaApi(
+    commitMessage: string,
+    overrideToken?: string
+  ): Promise<{
+    isPushed: boolean;
+    hasToken: boolean;
+    commitSha?: string;
+    commitUrl?: string;
+    filesPushed: string[];
+    message: string;
+    error?: string;
+  }> {
+    const token = getGitHubToken(overrideToken);
+    if (!token) {
+      return {
+        isPushed: false,
+        hasToken: false,
+        filesPushed: [],
+        error: 'NO_GITHUB_TOKEN',
+        message: 'يرجى إدخال رمز GitHub Personal Access Token (بصلاحية repo) للرفع المباشر إلى GitHub.'
+      };
+    }
+
+    if (isGitHubPushInProgress) {
+      // Wait briefly if another push is currently running
+      for (let i = 0; i < 20 && isGitHubPushInProgress; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+
+    isGitHubPushInProgress = true;
+    try {
+      const headers: Record<string, string> = {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'AlFardan-Family-Tree-Server'
+      };
+
+      const { latestCommitSha, baseTreeSha, changedFiles, deletedFiles } = await inspectGitHubMainDiff(token);
+
+      if (changedFiles.length === 0 && deletedFiles.length === 0) {
+        sessionFilesWritten.clear();
+        return {
+          isPushed: true,
+          hasToken: true,
+          commitSha: latestCommitSha,
+          commitUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/commit/${latestCommitSha}`,
+          filesPushed: [],
+          message: `جميع الملفات والصور على GitHub مطابقة لأحدث نسخة (Commit: ${latestCommitSha.slice(0, 7)})`
+        };
+      }
+
+      // Create blobs in batches of 4
+      const treeEntries: Array<{
+        path: string;
+        mode: '100644';
+        type: 'blob';
+        sha: string | null;
+      }> = [];
+
+      const batchSize = 4;
+      for (let i = 0; i < changedFiles.length; i += batchSize) {
+        const batch = changedFiles.slice(i, i + batchSize);
+        const batchResults = await Promise.all(
+          batch.map(async (fileItem) => {
+            const fileBuf = fs.readFileSync(fileItem.fullPath);
+            const blobRes = await fetch(
+              `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/blobs`,
+              {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({
+                  content: fileBuf.toString('base64'),
+                  encoding: 'base64'
+                })
+              }
+            );
+            if (!blobRes.ok) {
+              const errText = await blobRes.text();
+              throw new Error(`فشل رفع الملف ${fileItem.relPath} إلى GitHub (${blobRes.status}): ${errText}`);
+            }
+            const blobData: any = await blobRes.json();
+            return {
+              path: fileItem.relPath,
+              mode: '100644' as const,
+              type: 'blob' as const,
+              sha: blobData.sha as string
+            };
+          })
+        );
+        treeEntries.push(...batchResults);
+      }
+
+      for (const delPath of deletedFiles) {
+        treeEntries.push({
+          path: delPath,
+          mode: '100644',
+          type: 'blob',
+          sha: null
+        });
+      }
+
+      // Create new Git tree
+      const createTreeRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/trees`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            base_tree: baseTreeSha,
+            tree: treeEntries
+          })
+        }
       );
-      filesWritten.push(...manifestWritten);
-
-      if (latestFamilyData && filesWritten.length > 0) {
-        syncToFirestoreFromServer(latestFamilyData).catch(() => {});
+      if (!createTreeRes.ok) {
+        const errText = await createTreeRes.text();
+        throw new Error(`فشل إنشاء Git Tree على GitHub (${createTreeRes.status}): ${errText}`);
       }
+      const newTreeData: any = await createTreeRes.json();
 
-      return res.json({ success: true, url: cleanAvatarPath, filesWritten });
-    } catch (err: any) {
-      console.error('Error in /api/upload-avatar:', err);
-      return res.status(500).json({ error: err.message || 'Failed to save avatar' });
-    }
-  });
-
-  // 1b. API: Delete Avatar — permanently deletes public/avatars/[key].jpg and removes photos[key] from JSON files
-  app.post('/api/delete-avatar', (req, res) => {
-    try {
-      const { key } = req.body || {};
-      if (!key || typeof key !== 'string') {
-        return res.status(400).json({ error: 'Missing key' });
-      }
-
-      const vStamp = getServerSafeTimestamp();
-      const filesWritten = removeAvatarFileFromDiskServer(key);
-
-      let latestFamilyData: any = null;
-      for (const p of TARGET_JSON_FILES) {
-        const fullPath = path.resolve(__dirname, p);
-        if (fs.existsSync(fullPath)) {
-          try {
-            const raw = fs.readFileSync(fullPath, 'utf-8');
-            const parsed = JSON.parse(raw);
-            const targetObj = parsed.familyData ? parsed.familyData : parsed;
-            let entryDeleted = filesWritten.length > 0;
-            if (targetObj.photos && typeof targetObj.photos === 'object' && key in targetObj.photos) {
-              delete targetObj.photos[key];
-              entryDeleted = true;
-            }
-            if (entryDeleted) {
-              targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
-            }
-            latestFamilyData = targetObj;
-            const nextSerialized = JSON.stringify(parsed, null, 2);
-            if (writeFileIfChanged(p, nextSerialized)) {
-              filesWritten.push(p);
-            }
-          } catch (e) {
-            console.error(`Error deleting avatar in ${p}:`, e);
-          }
+      // Create new Git commit
+      const createCommitRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/commits`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            message: commitMessage,
+            tree: newTreeData.sha,
+            parents: [latestCommitSha]
+          })
         }
+      );
+      if (!createCommitRes.ok) {
+        const errText = await createCommitRes.text();
+        throw new Error(`فشل إنشاء Commit على GitHub (${createCommitRes.status}): ${errText}`);
+      }
+      const newCommitData: any = await createCommitRes.json();
+      const newCommitSha: string = newCommitData.sha;
+
+      // Update heads/main reference
+      const updateRefRes = await fetch(
+        `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/refs/heads/${GITHUB_BRANCH}`,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            sha: newCommitSha,
+            force: false
+          })
+        }
+      );
+      if (!updateRefRes.ok) {
+        const errText = await updateRefRes.text();
+        throw new Error(`فشل تحديث الفرع ${GITHUB_BRANCH} على GitHub (${updateRefRes.status}): ${errText}`);
       }
 
-      const manifestWritten = updateAvatarsManifest();
-      filesWritten.push(...manifestWritten);
+      const filesPushed = [
+        ...changedFiles.map((f) => f.relPath),
+        ...deletedFiles.map((d) => `${d} (حذف)`)
+      ];
 
-      if (latestFamilyData && filesWritten.length > 0) {
-        syncToFirestoreFromServer({
-          ...latestFamilyData,
-          photos: { ...(latestFamilyData.photos || {}), [key]: '' }
-        }).catch(() => {});
-      }
+      sessionFilesWritten.clear();
+      deletedAvatarRelPaths.clear();
 
-      return res.json({ success: true, deletedKey: key, updatedAt: vStamp, filesWritten });
+      return {
+        isPushed: true,
+        hasToken: true,
+        commitSha: newCommitSha,
+        commitUrl: `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/commit/${newCommitSha}`,
+        filesPushed,
+        message: `تم رفع ${filesPushed.length} ملف فعلياً إلى GitHub (Commit: ${newCommitSha.slice(0, 7)}): ${filesPushed.join('، ')}`
+      };
     } catch (err: any) {
-      console.error('Error in /api/delete-avatar:', err);
-      return res.status(500).json({ error: err.message || 'Failed to delete avatar' });
+      console.error('GitHub API push error:', err);
+      return {
+        isPushed: false,
+        hasToken: true,
+        filesPushed: [],
+        error: err?.message || 'GITHUB_PUSH_FAILED',
+        message: `تعذر الرفع إلى GitHub: ${err?.message || 'تأكد من صلاحية التوكن (repo scope)'}`
+      };
+    } finally {
+      isGitHubPushInProgress = false;
     }
-  });
+  }
 
   // Helper to apply and persist incoming state across all 3 JSON files (only writing when content changes)
-  function persistStateToTargetJsonFiles(
-    rawPayload: any,
-    opts?: { ignoreTimestampOnly?: boolean }
-  ): {
+  function persistStateToTargetJsonFiles(rawPayload: any): {
     syncedFamilyData: any;
     updatedAt: number;
     filesWritten: string[];
@@ -810,6 +1007,135 @@ async function startServer() {
     };
   }
 
+  // 1. API: Upload Avatar — saves file directly to public/avatars/[key].jpg and records /avatars/[key].jpg?v=[timestamp] in JSON files
+  app.post('/api/upload-avatar', (req, res) => {
+    try {
+      const { key, dataUrl } = req.body;
+      if (!key || !dataUrl) {
+        return res.status(400).json({ error: 'Missing key or dataUrl' });
+      }
+
+      const vStamp = getServerSafeTimestamp();
+      const { cleanPath: cleanAvatarPath, filesWritten } = savePhotoToAvatarsDirAndGetCleanPath(key, dataUrl, vStamp);
+      if (!cleanAvatarPath) {
+        return res.status(400).json({ error: 'Invalid dataUrl format' });
+      }
+
+      let latestFamilyData: any = null;
+
+      for (const p of TARGET_JSON_FILES) {
+        const fullPath = path.resolve(__dirname, p);
+        if (fs.existsSync(fullPath)) {
+          try {
+            const raw = fs.readFileSync(fullPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            const targetObj = parsed.familyData ? parsed.familyData : parsed;
+            let entryChanged = filesWritten.length > 0;
+
+            if (key.startsWith('arch_') || key.startsWith('photo_')) {
+              if (Array.isArray(targetObj.archivalPhotos)) {
+                targetObj.archivalPhotos = targetObj.archivalPhotos.map((ap: any) => {
+                  if (ap && ap.id === key && ap.url !== cleanAvatarPath) {
+                    entryChanged = true;
+                    return { ...ap, url: cleanAvatarPath };
+                  }
+                  return ap;
+                });
+              }
+            } else {
+              if (!targetObj.photos) targetObj.photos = {};
+              if (targetObj.photos[key] !== cleanAvatarPath) {
+                targetObj.photos[key] = cleanAvatarPath;
+                entryChanged = true;
+              }
+            }
+
+            if (entryChanged) {
+              targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
+            }
+            latestFamilyData = targetObj;
+            const nextSerialized = JSON.stringify(parsed, null, 2);
+            if (writeFileIfChanged(p, nextSerialized)) {
+              filesWritten.push(p);
+            }
+          } catch (e) {
+            console.error(`Error updating ${p}:`, e);
+          }
+        }
+      }
+
+      const cleanKey = key.replace(/[^a-zA-Z0-9_-]/g, '');
+      const manifestWritten = updateAvatarsManifest(
+        filesWritten.length > 0 ? { [`${cleanKey}.jpg`]: cleanAvatarPath } : undefined
+      );
+      filesWritten.push(...manifestWritten);
+
+      if (latestFamilyData && filesWritten.length > 0) {
+        syncToFirestoreFromServer(latestFamilyData).catch(() => {});
+      }
+
+      return res.json({ success: true, url: cleanAvatarPath, filesWritten });
+    } catch (err: any) {
+      console.error('Error in /api/upload-avatar:', err);
+      return res.status(500).json({ error: err.message || 'Failed to save avatar' });
+    }
+  });
+
+  // 1b. API: Delete Avatar — permanently deletes public/avatars/[key].jpg and removes photos[key] from JSON files
+  app.post('/api/delete-avatar', (req, res) => {
+    try {
+      const { key } = req.body || {};
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({ error: 'Missing key' });
+      }
+
+      const vStamp = getServerSafeTimestamp();
+      const filesWritten = removeAvatarFileFromDiskServer(key);
+
+      let latestFamilyData: any = null;
+      for (const p of TARGET_JSON_FILES) {
+        const fullPath = path.resolve(__dirname, p);
+        if (fs.existsSync(fullPath)) {
+          try {
+            const raw = fs.readFileSync(fullPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            const targetObj = parsed.familyData ? parsed.familyData : parsed;
+            let entryDeleted = filesWritten.length > 0;
+            if (targetObj.photos && typeof targetObj.photos === 'object' && key in targetObj.photos) {
+              delete targetObj.photos[key];
+              entryDeleted = true;
+            }
+            if (entryDeleted) {
+              targetObj.updatedAt = getServerSafeTimestamp(vStamp, targetObj.updatedAt);
+            }
+            latestFamilyData = targetObj;
+            const nextSerialized = JSON.stringify(parsed, null, 2);
+            if (writeFileIfChanged(p, nextSerialized)) {
+              filesWritten.push(p);
+            }
+          } catch (e) {
+            console.error(`Error deleting avatar in ${p}:`, e);
+          }
+        }
+      }
+
+      const manifestWritten = updateAvatarsManifest();
+      filesWritten.push(...manifestWritten);
+
+      if (latestFamilyData && filesWritten.length > 0) {
+        syncToFirestoreFromServer({
+          ...latestFamilyData,
+          photos: { ...(latestFamilyData.photos || {}), [key]: '' }
+        }).catch(() => {});
+      }
+
+      return res.json({ success: true, deletedKey: key, updatedAt: vStamp, filesWritten });
+    } catch (err: any) {
+      console.error('Error in /api/delete-avatar:', err);
+      return res.status(500).json({ error: err.message || 'Failed to delete avatar' });
+    }
+  });
+
   // Direct Disk Write Bridge: /api/save-tree and /__save_tree_to_disk
   const handleSaveTreeEndpoint = (req: express.Request, res: express.Response) => {
     try {
@@ -843,7 +1169,7 @@ async function startServer() {
   app.post('/__save_tree_to_disk', handleSaveTreeEndpoint);
   app.post('/api/save-family-data', handleSaveTreeEndpoint);
 
-  // Real-time Server-Side Firestore Listener (syncs metadata without running any git commands)
+  // Real-time Server-Side Firestore Listener
   if (serverDb) {
     try {
       onSnapshot(
@@ -913,21 +1239,132 @@ async function startServer() {
     }
   });
 
-  // 5. API: Return the list of files actually changed on disk (executes NO git commands)
-  app.post('/api/publish-to-github', (req, res) => {
+  // 5. API: Direct Admin Sync & Publish to GitHub via GitHub REST API (alialfardan/alfardan-family main branch)
+  app.post('/api/publish-to-github', async (req, res) => {
     try {
-      let currentWritten: string[] = [];
-      if (req.body && typeof req.body === 'object' && (req.body.familyData || req.body.members)) {
-        const result = persistStateToTargetJsonFiles(req.body);
-        currentWritten = result.filesWritten;
+      const body = req.body || {};
+      const headerToken = req.headers['x-github-token'] as string | undefined;
+      const incomingToken = (body.token && typeof body.token === 'string' && body.token.trim())
+        ? body.token.trim()
+        : (headerToken && typeof headerToken === 'string' && headerToken.trim() ? headerToken.trim() : undefined);
+
+      if (incomingToken) {
+        saveGitHubTokenToDisk(incomingToken);
       }
-      const allChangedFiles = Array.from(new Set([...sessionFilesWritten, ...currentWritten]));
+
+      let currentWritten: string[] = [];
+      if (body && typeof body === 'object' && (body.familyData || body.members)) {
+        const result = persistStateToTargetJsonFiles(body);
+        currentWritten = result.filesWritten;
+        if (result.syncedFamilyData && currentWritten.length > 0) {
+          syncToFirestoreFromServer(result.syncedFamilyData).catch(() => {});
+        }
+      }
+
+      const allChangedOnDisk = Array.from(new Set([...sessionFilesWritten, ...currentWritten]));
+      const pushResult = await pushChangesToGitHubViaApi(
+        'feat(publish): sync family tree data and avatars to alfardanfamily.com',
+        incomingToken
+      );
+
       return res.json({
-        success: true,
-        filesWritten: allChangedFiles
+        success: pushResult.isPushed,
+        isPushed: pushResult.isPushed,
+        hasToken: pushResult.hasToken,
+        commitSha: pushResult.commitSha,
+        commitUrl: pushResult.commitUrl,
+        filesWritten: allChangedOnDisk,
+        filesPushed: pushResult.filesPushed,
+        message: pushResult.message,
+        error: pushResult.error
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err.message, filesWritten: [] });
+      return res.status(500).json({
+        success: false,
+        isPushed: false,
+        error: err.message,
+        filesWritten: Array.from(sessionFilesWritten),
+        filesPushed: []
+      });
+    }
+  });
+
+  // 6. API: Save GitHub Token and immediately push all changed files to GitHub
+  app.post('/api/save-github-token', async (req, res) => {
+    try {
+      const { token } = req.body || {};
+      if (!token || typeof token !== 'string' || !token.trim()) {
+        return res.status(400).json({ error: 'Token is required' });
+      }
+      const trimmedToken = token.trim();
+      saveGitHubTokenToDisk(trimmedToken);
+
+      const pushResult = await pushChangesToGitHubViaApi(
+        'feat(sync): publish updates and avatars to alfardanfamily.com via GitHub API',
+        trimmedToken
+      );
+
+      return res.json({
+        success: pushResult.isPushed,
+        isPushed: pushResult.isPushed,
+        hasToken: true,
+        commitSha: pushResult.commitSha,
+        commitUrl: pushResult.commitUrl,
+        filesPushed: pushResult.filesPushed,
+        message: pushResult.message,
+        error: pushResult.error
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // 7. API: Get GitHub sync status (comparing local disk files with GitHub main branch)
+  app.get('/api/github-sync-status', async (req, res) => {
+    try {
+      const headerToken = req.headers['x-github-token'] as string | undefined;
+      if (headerToken && headerToken.trim() && !getGitHubToken()) {
+        saveGitHubTokenToDisk(headerToken.trim());
+      }
+      const token = getGitHubToken(headerToken);
+      const hasToken = !!token;
+
+      if (!hasToken) {
+        return res.json({
+          hasToken: false,
+          unpushedCount: sessionFilesWritten.size,
+          unpushedFiles: Array.from(sessionFilesWritten),
+          isConfigured: true,
+          repository: `${GITHUB_OWNER}/${GITHUB_REPO}`
+        });
+      }
+
+      try {
+        const diff = await inspectGitHubMainDiff(token);
+        const unpushedFiles = [
+          ...diff.changedFiles.map((f) => f.relPath),
+          ...diff.deletedFiles.map((d) => `${d} (حذف)`)
+        ];
+        return res.json({
+          hasToken: true,
+          unpushedCount: unpushedFiles.length,
+          unpushedFiles,
+          latestCommitSha: diff.latestCommitSha,
+          isConfigured: true,
+          repository: `${GITHUB_OWNER}/${GITHUB_REPO}`
+        });
+      } catch (apiErr: any) {
+        return res.json({
+          hasToken: true,
+          unpushedCount: sessionFilesWritten.size,
+          unpushedFiles: Array.from(sessionFilesWritten),
+          tokenError: apiErr?.message,
+          isConfigured: true,
+          repository: `${GITHUB_OWNER}/${GITHUB_REPO}`
+        });
+      }
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
     }
   });
 

@@ -4,6 +4,7 @@ import {
   loadSavedState,
   saveStateToStorage,
   buildFamilyRegistry,
+  RAW_TREE,
   DEFAULT_FAMILY_DATA,
   DEFAULT_NOTABLE_FIGURES,
   deduplicateMembers,
@@ -44,7 +45,7 @@ import { NotableFiguresView } from './components/NotableFiguresView';
 import { FamilyDirectoryView } from './components/FamilyDirectoryView';
 import { AboutAndAnalyticsView } from './components/AboutAndAnalyticsView';
 import { PedigreeCertificateModal } from './components/PedigreeCertificateModal';
-import { BackupModal } from './components/BackupModal';
+import { BackupModal, GITHUB_PAT_STORAGE_KEY } from './components/BackupModal';
 import { FamilyExplorerView } from './components/FamilyExplorerView';
 import { AdminAuthModal } from './components/AdminAuthModal';
 import { SearchResultsModal } from './components/SearchResultsModal';
@@ -1631,9 +1632,10 @@ export default function App() {
     showToast('تم حفظ وتحديث بيانات التواصل وفريق العمل بنجاح 💾', 'success');
   }, [isAuthorized, persistAndSyncImmediately, familyState, showToast]);
 
-  // Save and Commit All Photos & Data to Project Files For Publish
+  // Save and Commit All Photos & Data to Project Files and Push Directly to GitHub via GitHub REST API
   const handleSaveForPublish = async () => {
     setIsSavingForPublish(true);
+    showToast('⏳ جاري تحويل الصور ورفع التعديلات فعلياً إلى GitHub...', 'info');
     try {
       const nextTs = getMonotonicTimestamp(familyState);
       lastImmediateSyncAtRef.current = Date.now();
@@ -1660,8 +1662,8 @@ export default function App() {
         }
       }
 
-      // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /api/save-tree
-      const saveResult = await saveTreeToDisk(stateToSave, { replacePhotos: true, isPublishAction: true });
+      // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update JSON files on disk
+      await saveTreeToDisk(stateToSave, { replacePhotos: true, isPublishAction: true });
       saveStateToStorage(stateToSave);
 
       // 2. Sync metadata to Cloud Firestore
@@ -1671,13 +1673,58 @@ export default function App() {
         console.warn('Cloud sync on publish warning:', cloudErr);
       }
 
+      // 3. Push all changed/new files and photos directly to GitHub (alialfardan/alfardan-family main branch)
+      let storedToken = '';
+      try {
+        storedToken = localStorage.getItem(GITHUB_PAT_STORAGE_KEY) || '';
+      } catch {}
+
+      const pubRes = await apiFetch('/api/publish-to-github', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(storedToken ? { 'X-GitHub-Token': storedToken } : {})
+        },
+        body: JSON.stringify({
+          token: storedToken || undefined,
+          treeData: RAW_TREE,
+          replacePhotos: true,
+          isPublishAction: true,
+          familyData: stateToSave
+        })
+      });
+
+      const pubData = await pubRes.json();
+
       setFamilyState(stateToSave);
       setHasUnsavedServerChanges(false);
 
-      if (saveResult.ok && saveResult.filesWritten.length > 0) {
-        showToast(`تم تحديث ${saveResult.filesWritten.length} ملف: ${saveResult.filesWritten.join('، ')}`, 'success');
+      if (pubData && pubData.isPushed) {
+        const filesPushed: string[] = Array.isArray(pubData.filesPushed) ? pubData.filesPushed : [];
+        const shortSha = pubData.commitSha ? pubData.commitSha.slice(0, 7) : '';
+        if (filesPushed.length > 0) {
+          showToast(
+            `تم رفع ${filesPushed.length} ملف فعلياً إلى GitHub${shortSha ? ` (Commit: ${shortSha})` : ''}: ${filesPushed.join('، ')}`,
+            'success'
+          );
+        } else {
+          showToast(
+            `جميع الملفات والصور على GitHub مطابقة لأحدث نسخة بالفعل${shortSha ? ` (Commit: ${shortSha})` : ''}`,
+            'success'
+          );
+        }
+      } else if (pubData && !pubData.hasToken) {
+        setIsBackupModalOpen(true);
+        showToast(
+          'يرجى إدخال وحفظ رمز GitHub Token في النافذة المفتوحة لإتمام الرفع المباشر إلى GitHub',
+          'warning'
+        );
       } else {
-        showToast('لم تُكتب الملفات على المشروع. افتح الموقع من معاينة AI Studio', 'warning');
+        setIsBackupModalOpen(true);
+        showToast(
+          pubData?.message || 'لم تُكتب أو تُرفع الملفات إلى GitHub. افتح الموقع من معاينة AI Studio وتأكد من صلاحية التوكن',
+          'warning'
+        );
       }
     } catch (err) {
       console.error('Error saving for publish:', err);

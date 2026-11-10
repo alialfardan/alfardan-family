@@ -1,6 +1,10 @@
-import React from 'react';
-import { X, Download, Upload, RotateCcw, ShieldCheck, Github, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Download, Upload, RotateCcw, ShieldCheck, Github, Globe, CheckCircle2, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import { FamilyState } from '../types/family';
+import { apiFetch } from '../utils/apiClient';
+import { RAW_TREE, deduplicateMembers } from '../data/treeManager';
+
+export const GITHUB_PAT_STORAGE_KEY = 'fardan_github_pat';
 
 interface BackupModalProps {
   isOpen: boolean;
@@ -14,11 +18,150 @@ interface BackupModalProps {
 export const BackupModal: React.FC<BackupModalProps> = ({
   isOpen,
   onClose,
-  state: _state,
+  state,
   onExport,
   onImport,
   onResetToDefaults,
 }) => {
+  const [tokenInput, setTokenInput] = useState('');
+  const [hasToken, setHasToken] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem(GITHUB_PAT_STORAGE_KEY));
+    } catch {
+      return false;
+    }
+  });
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [unpushedCount, setUnpushedCount] = useState(0);
+  const [unpushedFiles, setUnpushedFiles] = useState<string[]>([]);
+  const [latestCommitSha, setLatestCommitSha] = useState<string>('');
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [pushedFilesList, setPushedFilesList] = useState<string[]>([]);
+  const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let storedToken = '';
+    try {
+      storedToken = localStorage.getItem(GITHUB_PAT_STORAGE_KEY) || '';
+    } catch {}
+
+    apiFetch('/api/github-sync-status', {
+      headers: storedToken ? { 'X-GitHub-Token': storedToken } : undefined
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data) {
+          const tokenConfigured = Boolean(data.hasToken || storedToken);
+          setHasToken(tokenConfigured);
+          setShowTokenInput(!tokenConfigured);
+          setUnpushedCount(data.unpushedCount || 0);
+          setUnpushedFiles(Array.isArray(data.unpushedFiles) ? data.unpushedFiles : []);
+          if (data.latestCommitSha) {
+            setLatestCommitSha(data.latestCommitSha);
+          }
+          if (data.tokenError) {
+            setStatusMessage({
+              text: `تنبيه من GitHub: ${data.tokenError}`,
+              type: 'error'
+            });
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  const executeGitHubPublish = async (explicitToken?: string) => {
+    let activeToken = explicitToken?.trim() || '';
+    if (!activeToken) {
+      try {
+        activeToken = localStorage.getItem(GITHUB_PAT_STORAGE_KEY) || '';
+      } catch {}
+    }
+
+    if (!activeToken && !hasToken) {
+      setStatusMessage({ text: 'يرجى إدخال رمز الوصول الشخصي (GitHub Token بصلاحية repo)', type: 'error' });
+      setShowTokenInput(true);
+      return;
+    }
+
+    setIsPublishing(true);
+    setPushedFilesList([]);
+    setStatusMessage({ text: '⏳ جاري تحويل الصور ورفع الملفات فعلياً إلى GitHub...', type: 'info' });
+
+    try {
+      const cleanPhotos = { ...(state.photos || {}) };
+      for (const [k, v] of Object.entries(cleanPhotos)) {
+        if (!v || !v.trim()) {
+          delete cleanPhotos[k];
+        }
+      }
+
+      const res = await apiFetch('/api/publish-to-github', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(activeToken ? { 'X-GitHub-Token': activeToken } : {})
+        },
+        body: JSON.stringify({
+          token: activeToken || undefined,
+          treeData: RAW_TREE,
+          replacePhotos: true,
+          isPublishAction: true,
+          familyData: {
+            ...state,
+            members: deduplicateMembers(state.members || []),
+            photos: cleanPhotos
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (data.isPushed) {
+        if (activeToken) {
+          try {
+            localStorage.setItem(GITHUB_PAT_STORAGE_KEY, activeToken);
+          } catch {}
+        }
+        setHasToken(true);
+        setShowTokenInput(false);
+        setTokenInput('');
+        setUnpushedCount(0);
+        setUnpushedFiles([]);
+        if (data.commitSha) {
+          setLatestCommitSha(data.commitSha);
+        }
+        const pushed: string[] = Array.isArray(data.filesPushed) ? data.filesPushed : [];
+        setPushedFilesList(pushed);
+        const shortSha = data.commitSha ? data.commitSha.slice(0, 7) : '';
+        if (pushed.length > 0) {
+          setStatusMessage({
+            text: `✓ تم رفع ${pushed.length} ملف فعلياً إلى GitHub بنجاح ${shortSha ? `(Commit: ${shortSha})` : ''}! يتحدث الموقع الرسمي alfardanfamily.com الآن تلقائياً 🚀`,
+            type: 'success'
+          });
+        } else {
+          setStatusMessage({
+            text: `✓ جميع الملفات والصور على GitHub مطابقة لأحدث نسخة بالفعل ${shortSha ? `(Commit: ${shortSha})` : ''}`,
+            type: 'success'
+          });
+        }
+      } else {
+        if (!data.hasToken) {
+          setHasToken(false);
+          setShowTokenInput(true);
+        }
+        setStatusMessage({
+          text: data.message || data.error || 'تعذر الرفع إلى GitHub، يرجى التأكد من صلاحيات الرمز (repo scope)',
+          type: 'error'
+        });
+      }
+    } catch (e: any) {
+      setStatusMessage({ text: e.message || 'حدث خطأ في الاتصال بالخادم أثناء الرفع إلى GitHub', type: 'error' });
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -47,20 +190,149 @@ export const BackupModal: React.FC<BackupModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 font-bold font-['Alexandria'] text-sm text-emerald-300">
                 <Globe className="w-4 h-4 text-emerald-400" />
-                <span>النشر المباشر للموقع الرسمي</span>
+                <span>الرفع المباشر إلى GitHub والموقع الرسمي</span>
               </div>
               <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] rounded-full font-bold">
                 alfardanfamily.com
               </span>
             </div>
 
-            <p className="text-[11px] text-slate-300 leading-normal">
-              المستودع: <code className="bg-black/40 px-1.5 py-0.5 rounded text-emerald-300 font-mono">alialfardan/alfardan-family</code>
-            </p>
+            <div className="text-[11px] text-slate-300 leading-normal space-y-1">
+              <div className="flex items-center justify-between">
+                <span>
+                  المستودع: <code className="bg-black/40 px-1.5 py-0.5 rounded text-emerald-300 font-mono">alialfardan/alfardan-family</code>
+                </span>
+                {latestCommitSha && (
+                  <span className="text-[10px] font-mono text-slate-400">
+                    آخر Commit: {latestCommitSha.slice(0, 7)}
+                  </span>
+                )}
+              </div>
 
-            <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl flex items-center gap-2.5 text-emerald-200 font-bold text-xs">
-              <Github className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>اضغط أداة GitHub أعلى AI Studio ثم Commit &amp; Push</span>
+              {unpushedCount > 0 ? (
+                <div className="mt-1.5 p-2 bg-amber-500/15 border border-amber-400/30 rounded-xl text-amber-200">
+                  <span className="font-bold block">
+                    ⚠️ يوجد {unpushedCount} ملف معدل بانتظار الرفع إلى GitHub:
+                  </span>
+                  <div className="mt-1 max-h-20 overflow-y-auto font-mono text-[10px] text-amber-100 space-y-0.5">
+                    {unpushedFiles.map((f, i) => (
+                      <div key={i}>• {f}</div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <span className="block mt-1 text-emerald-300 font-bold">
+                  ✓ الملفات متزامنة وجاهزة للنشر المباشر.
+                </span>
+              )}
+            </div>
+
+            {/* Token Status & Input / Direct Push Button */}
+            <div className="pt-1 space-y-2.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-300 flex items-center gap-1">
+                  <KeyRound className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>رمز GitHub Personal Access Token:</span>
+                </span>
+                {hasToken ? (
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-center gap-1 text-emerald-400 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      محفوظ ومفعل
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowTokenInput(!showTokenInput)}
+                      className="text-[10px] text-slate-300 hover:text-white underline cursor-pointer"
+                    >
+                      {showTokenInput ? 'إخفاء' : 'تغيير الرمز'}
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-amber-400 font-bold">مطلوب للرفع المباشر</span>
+                )}
+              </div>
+
+              {(!hasToken || showTokenInput) && (
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder={hasToken ? 'أدخل رمزاً جديداً (ghp_...) لتحديثه' : 'ghp_xxxxxxxxxxxxxxxxxxxx'}
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                    className="flex-1 bg-black/40 border border-slate-700 focus:border-emerald-500 rounded-xl px-3 py-2 text-white text-xs placeholder:text-slate-500 font-mono outline-none"
+                  />
+                  <button
+                    onClick={() => executeGitHubPublish(tokenInput)}
+                    disabled={isPublishing || (!tokenInput.trim() && !hasToken)}
+                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap shadow-md"
+                  >
+                    {isPublishing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>جاري الرفع...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Github className="w-3.5 h-3.5" />
+                        <span>حفظ ورفع لـ GitHub 🚀</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {hasToken && !showTokenInput && (
+                <button
+                  onClick={() => executeGitHubPublish()}
+                  disabled={isPublishing}
+                  className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md"
+                >
+                  {isPublishing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>جاري تحويل الصور ورفع الملفات إلى GitHub...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Github className="w-4 h-4 text-white" />
+                      <span>رفع التعديلات والصور مباشرة إلى GitHub الآن 🚀</span>
+                    </>
+                  )}
+                </button>
+              )}
+
+              {statusMessage && (
+                <div
+                  className={`p-2.5 rounded-xl text-[11px] font-bold space-y-1.5 ${
+                    statusMessage.type === 'success'
+                      ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/40'
+                      : statusMessage.type === 'error'
+                      ? 'bg-rose-950/80 text-rose-300 border border-rose-500/40'
+                      : 'bg-blue-950/80 text-blue-300 border border-blue-500/40'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    {statusMessage.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    ) : statusMessage.type === 'info' ? (
+                      <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    )}
+                    <span>{statusMessage.text}</span>
+                  </div>
+
+                  {pushedFilesList.length > 0 && (
+                    <div className="mt-1.5 pt-1.5 border-t border-emerald-500/30 font-mono text-[10px] text-emerald-200 max-h-28 overflow-y-auto space-y-0.5">
+                      <div className="font-sans font-bold text-emerald-300 mb-0.5">الملفات التي تم رفعها إلى GitHub:</div>
+                      {pushedFilesList.map((f, idx) => (
+                        <div key={idx}>✓ {f}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
