@@ -4,7 +4,7 @@ import { getArabicInitial, loadCustomAvatarsBackup } from '../data/treeManager';
 // Session-wide cache of URLs that failed to load so we never re-request a 404 avatar
 const failedAvatarUrls = new Set<string>();
 
-const VALID_AVATAR_PATH_RE = /^\/avatars\/(o\d+|oF|oR|ot\d+|am_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+|notable_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i;
+const VALID_AVATAR_PATH_RE = /^\/avatars\/([a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 
 export function markAvatarUrlFailed(url: string): void {
   if (!url) return;
@@ -155,16 +155,27 @@ export const MemberAvatar: React.FC<MemberAvatarProps> = ({
     if (activeSrc) {
       markAvatarUrlFailed(activeSrc);
     }
-    // Check if we have a base64 backup in localStorage / customAvatarsBackup
-    const match = activeSrc ? activeSrc.match(/^\/avatars\/([^.?]+)\./) : null;
+    const match = activeSrc ? activeSrc.match(/\/avatars\/([^.?]+)\./) : null;
     const resolvedKey = personKey || (match ? match[1] : '');
     if (resolvedKey) {
+      // Tier 1: Check if we have a base64 backup in localStorage / customAvatarsBackup (synced from Firestore)
       const backups = loadCustomAvatarsBackup();
       const backupDataUrl = backups[resolvedKey];
       if (backupDataUrl && backupDataUrl.startsWith('data:image/') && backupDataUrl !== activeSrc) {
         setActiveSrc(backupDataUrl);
         setFailed(false);
         return;
+      }
+
+      // Tier 2: If /avatars/[key].jpg failed on static host before GitHub Pages build completed, try GitHub Raw main branch directly
+      if (activeSrc && activeSrc.startsWith('/avatars/')) {
+        const cleanRel = activeSrc.replace(/^\/avatars\//, '');
+        const rawGithubUrl = `https://raw.githubusercontent.com/alialfardan/alfardan-family/main/public/avatars/${cleanRel}`;
+        if (!isAvatarUrlFailed(rawGithubUrl) && rawGithubUrl !== activeSrc) {
+          setActiveSrc(rawGithubUrl);
+          setFailed(false);
+          return;
+        }
       }
     }
     setActiveSrc(null);

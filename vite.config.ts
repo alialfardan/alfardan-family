@@ -17,6 +17,12 @@ function removeAvatarFileFromDisk(key: string, avatarsDir: string): void {
   }
 }
 
+function getVersionFromAvatarUrl(url?: string): number {
+  if (!url || typeof url !== 'string') return 0;
+  const m = url.match(/[?&]v=(\d+)/);
+  return m ? parseInt(m[1], 10) || 0 : 0;
+}
+
 function extractBase64ToAvatarFile(
   key: string,
   val: string,
@@ -48,7 +54,6 @@ function extractBase64ToAvatarFile(
     const targetFilename = `${cleanKey}.jpg`;
     const targetPath = path.join(avatarsDir, targetFilename);
 
-    // If a gallery image from another key was assigned to this person, copy it to public/avatars/[cleanKey].jpg
     if (cleanFile !== targetFilename && fs.existsSync(sourcePath)) {
       try {
         fs.copyFileSync(sourcePath, targetPath);
@@ -81,7 +86,66 @@ function saveTreeToDiskPlugin(): Plugin {
   return {
     name: 'save-tree-to-disk-bridge',
     configureServer(server) {
-      // Handle /api/delete-avatar directly
+      // 1. Handle /api/upload-avatar directly
+      server.middlewares.use('/api/upload-avatar', (req, res, next) => {
+        if (req.method !== 'POST') return next();
+        let body = '';
+        req.on('data', (chunk) => {
+          body += chunk.toString();
+        });
+        req.on('end', () => {
+          try {
+            const { key, dataUrl } = JSON.parse(body || '{}');
+            if (!key || !dataUrl) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Missing key or dataUrl' }));
+              return;
+            }
+            const rootDir = import.meta.dirname;
+            const avatarsDir = path.resolve(rootDir, 'public/avatars');
+            const initialTreePath = path.resolve(rootDir, 'src/data/initialTreeData.json');
+            const backupTreePath = path.resolve(rootDir, 'src/data/initialTreeData.backup.json');
+            const publicBackupPath = path.resolve(rootDir, 'public/fardan_family_tree_backup.json');
+            const vStamp = Date.now();
+
+            const cleanAvatarPath = extractBase64ToAvatarFile(key, dataUrl, avatarsDir, vStamp);
+
+            for (const filePath of [initialTreePath, backupTreePath, publicBackupPath]) {
+              if (fs.existsSync(filePath)) {
+                try {
+                  const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                  const targetObj = parsed.familyData ? parsed.familyData : parsed;
+                  if (key.startsWith('arch_') || key.startsWith('photo_')) {
+                    if (Array.isArray(targetObj.archivalPhotos)) {
+                      targetObj.archivalPhotos = targetObj.archivalPhotos.map((ap: any) =>
+                        ap && ap.id === key ? { ...ap, url: cleanAvatarPath } : ap
+                      );
+                    }
+                  } else {
+                    if (!targetObj.photos) targetObj.photos = {};
+                    targetObj.photos[key] = cleanAvatarPath;
+                  }
+                  targetObj.updatedAt = Math.max(targetObj.updatedAt || 0, vStamp);
+                  fs.writeFileSync(filePath, JSON.stringify(parsed, null, 2), 'utf-8');
+                } catch {}
+              }
+            }
+
+            updateAvatarsManifestOnDisk(rootDir, avatarsDir, vStamp);
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, url: cleanAvatarPath, updatedAt: vStamp }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: err?.message || 'Failed to upload avatar' }));
+          }
+        });
+      });
+
+      // 2. Handle /api/delete-avatar directly
       server.middlewares.use('/api/delete-avatar', (req, res, next) => {
         if (req.method !== 'POST') return next();
         let body = '';
@@ -104,10 +168,8 @@ function saveTreeToDiskPlugin(): Plugin {
             const publicBackupPath = path.resolve(rootDir, 'public/fardan_family_tree_backup.json');
             const vStamp = Date.now();
 
-            // 1. Delete physical file from public/avatars/[key].jpg
             removeAvatarFileFromDisk(key, avatarsDir);
 
-            // 2. Delete photos[key] from all JSON files
             for (const filePath of [initialTreePath, backupTreePath, publicBackupPath]) {
               if (fs.existsSync(filePath)) {
                 try {
@@ -135,7 +197,7 @@ function saveTreeToDiskPlugin(): Plugin {
         });
       });
 
-      // Handle /api/save-tree and /__save_tree_to_disk
+      // 3. Handle /api/save-tree and /__save_tree_to_disk
       const handleSaveTreeMiddleware = (req: any, res: any, next: any) => {
         if (req.method !== 'POST') {
           return next();
@@ -151,7 +213,6 @@ function saveTreeToDiskPlugin(): Plugin {
             const explicitDeletedKeys = new Set<string>(
               Array.isArray(parsedBody.deletedPhotoKeys) ? parsedBody.deletedPhotoKeys : []
             );
-            const replacePhotos = Boolean(parsedBody.replacePhotos);
 
             const rootDir = import.meta.dirname;
             const initialTreePath = path.resolve(rootDir, 'src/data/initialTreeData.json');
@@ -171,7 +232,7 @@ function saveTreeToDiskPlugin(): Plugin {
             }
 
             const existingFamilyData = existingWrapper.familyData || {};
-            const vStamp = incomingFamilyData.updatedAt || Date.now();
+            const vStamp = Math.max(incomingFamilyData.updatedAt || 0, existingFamilyData.updatedAt || 0, Date.now());
 
             const incomingPhotos = incomingFamilyData.photos || {};
             for (const [k, val] of Object.entries(incomingPhotos)) {
@@ -180,34 +241,33 @@ function saveTreeToDiskPlugin(): Plugin {
               }
             }
 
-            // If replacePhotos is true, any key that existed previously but was deleted from incomingPhotos is also removed
-            if (replacePhotos && existingFamilyData.photos && typeof existingFamilyData.photos === 'object') {
-              for (const existingKey of Object.keys(existingFamilyData.photos)) {
-                if (!(existingKey in incomingPhotos)) {
-                  explicitDeletedKeys.add(existingKey);
-                }
-              }
-            }
-
-            // Delete physical avatar files for all deleted keys
+            // Delete physical avatar files ONLY for explicitly deleted keys
             for (const delKey of explicitDeletedKeys) {
               removeAvatarFileFromDisk(delKey, avatarsDir);
             }
 
-            const rawMergedPhotos: Record<string, string> = replacePhotos
-              ? { ...incomingPhotos }
-              : {
-                  ...(existingFamilyData.photos || {}),
-                  ...incomingPhotos
-                };
-
             const cleanPhotos: Record<string, string> = {};
-            for (const [k, val] of Object.entries(rawMergedPhotos)) {
-              if (explicitDeletedKeys.has(k) || !val || typeof val !== 'string' || !val.trim()) {
-                delete cleanPhotos[k];
+            for (const [ek, evalStr] of Object.entries(existingFamilyData.photos || {})) {
+              if (explicitDeletedKeys.has(ek) || !evalStr || typeof evalStr !== 'string' || !evalStr.trim()) {
                 continue;
               }
-              cleanPhotos[k] = extractBase64ToAvatarFile(k, val, avatarsDir, vStamp);
+              cleanPhotos[ek] = extractBase64ToAvatarFile(ek, evalStr, avatarsDir, vStamp);
+            }
+
+            for (const [ik, ivalStr] of Object.entries(incomingPhotos)) {
+              if (explicitDeletedKeys.has(ik) || !ivalStr || typeof ivalStr !== 'string' || !ivalStr.trim()) {
+                delete cleanPhotos[ik];
+                continue;
+              }
+              const extracted = extractBase64ToAvatarFile(ik, ivalStr, avatarsDir, vStamp);
+              const existingUrl = cleanPhotos[ik];
+              if (existingUrl && existingUrl.startsWith('/avatars/') && extracted.startsWith('/avatars/')) {
+                const exV = getVersionFromAvatarUrl(existingUrl);
+                const inV = getVersionFromAvatarUrl(extracted);
+                cleanPhotos[ik] = inV >= exV ? extracted : existingUrl;
+              } else {
+                cleanPhotos[ik] = extracted;
+              }
             }
 
             const rawArchival = Array.isArray(incomingFamilyData.archivalPhotos) && incomingFamilyData.archivalPhotos.length > 0

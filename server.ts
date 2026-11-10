@@ -38,7 +38,13 @@ function sanitizeForFirestore(obj: any): any {
 }
 
 const SERVER_BASELINE_TS = 1743850000000;
-const VALID_SERVER_PHOTO_KEY_RE = /^(o\d+|oF|oR|ot\d+|am_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+|notable_[a-zA-Z0-9_-]+)$/;
+const VALID_SERVER_PHOTO_KEY_RE = /^[a-zA-Z0-9_-]+$/;
+
+function getServerAvatarVersion(url?: string): number {
+  if (!url || typeof url !== 'string') return 0;
+  const m = url.match(/[?&]v=(\d+)/);
+  return m ? parseInt(m[1], 10) || 0 : 0;
+}
 
 function isValidServerPhotoEntry(key: string, val: unknown): val is string {
   if (!key || !VALID_SERVER_PHOTO_KEY_RE.test(key)) return false;
@@ -55,7 +61,7 @@ function isValidServerPhotoEntry(key: string, val: unknown): val is string {
     return false;
   }
   if (trimmed.startsWith('/avatars/')) {
-    return /^\/avatars\/(o\d+|oF|oR|ot\d+|am_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+|notable_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(trimmed);
+    return /^\/avatars\/([a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(trimmed);
   }
   return true;
 }
@@ -535,7 +541,6 @@ async function startServer() {
     const state = rawPayload?.familyData ? rawPayload.familyData : rawPayload;
     const vStamp = getServerSafeTimestamp(state?.updatedAt);
     const incomingPhotos = state?.photos || {};
-    const replacePhotos = Boolean(rawPayload?.replacePhotos);
     const explicitlyDeletedPhotoKeys = new Set<string>(
       Array.isArray(rawPayload?.deletedPhotoKeys) ? rawPayload.deletedPhotoKeys : []
     );
@@ -585,14 +590,6 @@ async function startServer() {
         const incTime = normalizeServerTimestamp(state?.updatedAt) || vStamp;
         finalUpdatedAt = getServerSafeTimestamp(incTime, baseTime);
 
-        if (replacePhotos && existingData?.photos && typeof existingData.photos === 'object') {
-          for (const existingKey of Object.keys(existingData.photos)) {
-            if (!(existingKey in incomingPhotos)) {
-              explicitlyDeletedPhotoKeys.add(existingKey);
-            }
-          }
-        }
-
         for (const delKey of explicitlyDeletedPhotoKeys) {
           removeAvatarFileFromDiskServer(delKey);
         }
@@ -605,18 +602,16 @@ async function startServer() {
           true
         );
 
-        // Preserve all existing valid photos as /avatars/[id].jpg?v=[timestamp], extract any incoming Base64 to public/avatars/, and permanently delete removed photos
+        // Strictly preserve all existing valid photos as /avatars/[id].jpg?v=[timestamp], extract any incoming Base64 to public/avatars/, and only delete explicitly removed photos
         const mergedPhotos: Record<string, string> = {};
-        if (!replacePhotos) {
-          for (const [ek, ev] of Object.entries(existingData?.photos || {})) {
-            if (explicitlyDeletedPhotoKeys.has(ek)) {
-              delete mergedPhotos[ek];
-              continue;
-            }
-            if (isValidServerPhotoEntry(ek, ev)) {
-              const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(ek, ev, finalUpdatedAt);
-              if (cleanPath) mergedPhotos[ek] = cleanPath;
-            }
+        for (const [ek, ev] of Object.entries(existingData?.photos || {})) {
+          if (explicitlyDeletedPhotoKeys.has(ek)) {
+            delete mergedPhotos[ek];
+            continue;
+          }
+          if (isValidServerPhotoEntry(ek, ev)) {
+            const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(ek, ev, finalUpdatedAt);
+            if (cleanPath) mergedPhotos[ek] = cleanPath;
           }
         }
         for (const [pk, pv] of Object.entries(incomingPhotos)) {
@@ -627,7 +622,14 @@ async function startServer() {
           if (isValidServerPhotoEntry(pk, pv)) {
             const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(pk, pv, finalUpdatedAt);
             if (cleanPath) {
-              mergedPhotos[pk] = cleanPath;
+              const existingUrl = mergedPhotos[pk];
+              if (existingUrl && existingUrl.startsWith('/avatars/') && cleanPath.startsWith('/avatars/')) {
+                const exV = getServerAvatarVersion(existingUrl);
+                const inV = getServerAvatarVersion(cleanPath);
+                mergedPhotos[pk] = inV >= exV ? cleanPath : existingUrl;
+              } else {
+                mergedPhotos[pk] = cleanPath;
+              }
             }
           }
         }
@@ -818,6 +820,41 @@ async function startServer() {
         },
         () => {}
       );
+
+      // Also listen to family_tree/custom_avatars so any photo uploaded on alfardanfamily.com or another device
+      // is automatically extracted to public/avatars/[key].jpg on Google AI Studio's disk and recorded in initialTreeData.json!
+      onSnapshot(
+        doc(serverDb, 'family_tree', 'custom_avatars'),
+        (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.data();
+          if (!data || typeof data.avatars !== 'object') return;
+          const avatarsMap = data.avatars as Record<string, string>;
+          const vStamp = normalizeServerTimestamp(data.updatedAt) || Date.now();
+          let anyExtracted = false;
+          const extractedPhotos: Record<string, string> = {};
+
+          for (const [key, val] of Object.entries(avatarsMap)) {
+            if (typeof val === 'string' && val.startsWith('data:image/')) {
+              const cleanPath = savePhotoToAvatarsDirAndGetCleanPath(key, val, vStamp);
+              if (cleanPath) {
+                extractedPhotos[key] = cleanPath;
+                anyExtracted = true;
+              }
+            }
+          }
+
+          if (anyExtracted) {
+            try {
+              persistStateToTargetJsonFiles({
+                photos: extractedPhotos,
+                updatedAt: vStamp
+              });
+            } catch {}
+          }
+        },
+        () => {}
+      );
     } catch {
       // Ignore listener setup errors
     }
@@ -948,7 +985,7 @@ async function startServer() {
       const fullPath = path.join(avatarsDir, cleanRel);
       if (!fs.existsSync(fullPath)) {
         res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
-        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
         return res.status(200).send(FALLBACK_AVATAR_SVG);
       }
     } catch {}

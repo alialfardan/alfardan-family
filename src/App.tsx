@@ -27,12 +27,15 @@ import {
   subscribeToContactInfo,
   subscribeToArchivalPhotos,
   subscribeToNotableFigures,
+  subscribeToCustomAvatars,
   syncFamilyStateToCloud,
   syncContactInfoToCloud,
   syncArchivalPhotoToCloud,
   deleteArchivalPhotoFromCloud,
   syncNotableFigureToCloud,
   deleteNotableFigureFromCloud,
+  syncCustomAvatarToCloud,
+  deleteCustomAvatarFromCloud,
   ensureCloudInitialized,
   markPhotoDeletedForCloud,
   clearPhotoDeletedForCloud
@@ -55,7 +58,7 @@ import { AddEditArchivalPhotoModal } from './components/AddEditArchivalPhotoModa
 import { FaceCropModal } from './components/FaceCropModal';
 import { AvatarGalleryModal } from './components/AvatarGalleryModal';
 import { ContactCreditsModal } from './components/ContactCreditsModal';
-import { apiFetch, mirrorSaveToAllEndpoints } from './utils/apiClient';
+import { apiFetch, isStaticProductionHost } from './utils/apiClient';
 import { fastCompressAvatar } from './utils/imageDownload';
 import {
   getNotificationPermission,
@@ -146,9 +149,14 @@ export default function App() {
         return;
       }
       const ts = Date.now();
+      const onStaticHost = isStaticProductionHost();
       const fetchPromises: Promise<any>[] = [
-        apiFetch(`/api/family-data?t=${ts}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null),
-        fetch(`${GITHUB_RAW_JSON}?t=${ts}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+        onStaticHost
+          ? Promise.resolve(null)
+          : apiFetch(`/api/family-data?t=${ts}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null),
+        onStaticHost
+          ? fetch(`${GITHUB_RAW_JSON}?t=${ts}`, { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)).catch(() => null)
+          : Promise.resolve(null)
       ];
 
       const settled = await Promise.allSettled(fetchPromises);
@@ -335,11 +343,34 @@ export default function App() {
       });
     });
 
+    // Subscribe to dedicated family_tree/custom_avatars relay for instant cross-site avatar image sync
+    const unsubscribeCustomAvatars = subscribeToCustomAvatars((cloudAvatars) => {
+      const existingBackups = loadCustomAvatarsBackup();
+      const newKeysToWrite: Array<[string, string]> = [];
+      for (const [k, base64] of Object.entries(cloudAvatars)) {
+        if (!base64 || base64 === '') {
+          removeCustomAvatarBackup(k);
+        } else if (base64.startsWith('data:image/')) {
+          clearFailedAvatarUrl(k);
+          if (existingBackups[k] !== base64) {
+            saveCustomAvatarBackup(k, base64);
+            newKeysToWrite.push([k, base64]);
+          }
+        }
+      }
+      if (!isStaticProductionHost() && newKeysToWrite.length > 0) {
+        for (const [k, base64] of newKeysToWrite) {
+          uploadMemberAvatarToDisk(k, base64).catch(() => {});
+        }
+      }
+    });
+
     return () => {
       unsubscribeState();
       unsubscribeArchival();
       unsubscribeNotables();
       unsubscribeContact();
+      unsubscribeCustomAvatars();
     };
   }, []);
 
@@ -627,11 +658,6 @@ export default function App() {
     syncFamilyStateToCloud(stampedState).catch(err => {
       console.warn('Immediate cloud sync error:', err);
     });
-
-    // 3. Direct instant mirror to server endpoints
-    mirrorSaveToAllEndpoints('/api/save-tree', stampedState).catch(err => {
-      console.warn('Immediate save-tree error:', err);
-    });
   }, []);
 
   // Add / Edit submission
@@ -663,6 +689,9 @@ export default function App() {
       if (hasPhoto && data.photo) {
         clearFailedAvatarUrl(newMemberKey);
         clearPhotoDeletedForCloud(newMemberKey);
+        if (data.photo.startsWith('data:image/')) {
+          syncCustomAvatarToCloud(newMemberKey, data.photo).catch(() => {});
+        }
         uploadMemberAvatarToDisk(newMemberKey, data.photo).catch(() => {});
       }
 
@@ -729,10 +758,14 @@ export default function App() {
 
       if (isPhotoExplicitlyRemoved) {
         markPhotoDeletedForCloud(key);
+        deleteCustomAvatarFromCloud(key).catch(() => {});
         deleteMemberAvatarFromDisk(key).catch(() => {});
       } else if (isNewOrUpdatedPhoto && finalPhoto) {
         clearFailedAvatarUrl(key);
         clearPhotoDeletedForCloud(key);
+        if (finalPhoto.startsWith('data:image/')) {
+          syncCustomAvatarToCloud(key, finalPhoto).catch(() => {});
+        }
         uploadMemberAvatarToDisk(key, finalPhoto).catch(() => {});
       }
 
@@ -976,6 +1009,7 @@ export default function App() {
     const targetKey = key || avatarGalleryModal.targetKey;
     if (!targetKey) return;
     markPhotoDeletedForCloud(targetKey);
+    deleteCustomAvatarFromCloud(targetKey).catch(() => {});
     deleteMemberAvatarFromDisk(targetKey).catch(() => {});
 
     setFamilyState(prev => {
@@ -1001,7 +1035,10 @@ export default function App() {
     const key = avatarGalleryModal.targetKey;
     clearFailedAvatarUrl(key);
     clearPhotoDeletedForCloud(key);
-    uploadMemberAvatarToDisk(key, url).catch(() => {});
+    if (url.startsWith('data:image/')) {
+      syncCustomAvatarToCloud(key, url).catch(() => {});
+    }
+    await uploadMemberAvatarToDisk(key, url).catch(() => {});
 
     const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
 
@@ -1068,10 +1105,13 @@ export default function App() {
     const key = faceCropModal.targetKey;
     const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
 
-    // 1. Immediately write physical .jpg file to public/avatars/[key].jpg on disk
+    // 1. Immediately sync Base64 to Firestore relay AND write physical .jpg file to public/avatars/[key].jpg on disk
     clearFailedAvatarUrl(key);
     clearPhotoDeletedForCloud(key);
-    uploadMemberAvatarToDisk(key, croppedDataUrl).catch(() => {});
+    if (croppedDataUrl.startsWith('data:image/')) {
+      syncCustomAvatarToCloud(key, croppedDataUrl).catch(() => {});
+    }
+    await uploadMemberAvatarToDisk(key, croppedDataUrl).catch(() => {});
 
     lastImmediateSyncAtRef.current = Date.now();
 
@@ -1655,6 +1695,15 @@ export default function App() {
         updatedAt: nextTs
       };
 
+      // 0. Ensure any locally cached Base64 custom avatars are also written to public/avatars/ on disk
+      const customBackups = loadCustomAvatarsBackup();
+      for (const [k, b64] of Object.entries(customBackups)) {
+        if (cleanPhotos[k] && b64 && b64.startsWith('data:image/')) {
+          await uploadMemberAvatarToDisk(k, b64).catch(() => {});
+          syncCustomAvatarToCloud(k, b64).catch(() => {});
+        }
+      }
+
       // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /api/save-tree
       const diskSaved = await saveTreeToDisk(stateToSave, { replacePhotos: true });
       saveStateToStorage(stateToSave);
@@ -1668,9 +1717,6 @@ export default function App() {
       } catch (cloudErr) {
         console.warn('Cloud sync on publish warning:', cloudErr);
       }
-
-      // 3. Mirror full state to /api/save-tree
-      await mirrorSaveToAllEndpoints('/api/save-tree', stateToSave).catch(() => {});
 
       setFamilyState(stateToSave);
       setHasUnsavedServerChanges(false);

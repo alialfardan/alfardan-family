@@ -231,7 +231,13 @@ export function mergeNotableFiguresLists(
 const STORAGE_KEY = 'fardan_family_tree_state_v5';
 const CUSTOM_AVATARS_STORAGE_KEY = 'fardan_custom_avatars_v2';
 
-const VALID_PHOTO_KEY_RE = /^(o\d+|oF|oR|ot\d+|am_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+|notable_[a-zA-Z0-9_-]+)$/;
+const VALID_PHOTO_KEY_RE = /^[a-zA-Z0-9_-]+$/;
+
+function getAvatarUrlVersion(url?: string): number {
+  if (!url || typeof url !== 'string') return 0;
+  const m = url.match(/[?&]v=(\d+)/);
+  return m ? parseInt(m[1], 10) || 0 : 0;
+}
 
 export function isValidPhotoEntry(key: string, val: unknown): val is string {
   if (!key || !VALID_PHOTO_KEY_RE.test(key) || DEAD_PHOTO_KEYS.has(key)) return false;
@@ -573,6 +579,12 @@ export function mergeFamilyStates(
     const baseVal = mergedPhotos[k];
     if (!baseVal || !baseVal.trim()) {
       mergedPhotos[k] = cleanIncVal;
+    } else if (cleanIncVal.startsWith('/avatars/') && baseVal.startsWith('/avatars/')) {
+      const baseV = getAvatarUrlVersion(baseVal);
+      const incV = getAvatarUrlVersion(cleanIncVal);
+      if (incV > baseV || (incV === baseV && (incomingIsNewer || forceIncomingAuthoritative))) {
+        mergedPhotos[k] = cleanIncVal;
+      }
     } else if (cleanIncVal.startsWith('/avatars/')) {
       if (incomingIsNewer || forceIncomingAuthoritative || baseVal.startsWith('data:image/')) {
         mergedPhotos[k] = cleanIncVal;
@@ -758,7 +770,9 @@ export function loadSavedState(): FamilyState {
 export async function uploadMemberAvatarToDisk(key: string, dataUrl: string): Promise<string> {
   const fallbackCleanPath = `/avatars/${key}.jpg?v=${Date.now()}`;
   if (!key || !dataUrl) return fallbackCleanPath;
-  removeCustomAvatarBackup(key);
+  if (dataUrl.startsWith('data:image/')) {
+    saveCustomAvatarBackup(key, dataUrl);
+  }
   if (DEFAULT_FAMILY_DATA?.photos) {
     DEFAULT_FAMILY_DATA.photos[key] = fallbackCleanPath;
   }
