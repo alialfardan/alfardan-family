@@ -43,6 +43,7 @@ interface FamilyExplorerViewProps {
   onOpenSearchResults?: (query: string) => void;
   onSelectPerson?: (key: string) => void;
   isAuthorized?: boolean;
+  isPrivacyRestricted?: boolean;
   onOpenContact?: () => void;
 }
 
@@ -60,6 +61,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
   onOpenSearchResults,
   onSelectPerson,
   isAuthorized = false,
+  isPrivacyRestricted = false,
   onOpenContact,
 }) => {
   // Navigation mode: 'home' or 'person'
@@ -87,6 +89,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
     const results: ProcessedPerson[] = [];
     for (const p of registry.people.values()) {
       if (p.deleted) continue;
+      if (isPrivacyRestricted && p.gender === 'f') continue;
       const quad = normalizeArabic(getQuadLineageName(p.key, registry.people, 4));
       const normName = normalizeArabic(p.name);
       if (normName.includes(q) || quad.includes(q)) {
@@ -95,7 +98,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
       }
     }
     return results;
-  }, [heroSearchQuery, registry.people]);
+  }, [heroSearchQuery, registry.people, isPrivacyRestricted]);
 
   // Active person
   const personKeyToUse = currentPersonKey === 'home' ? registry.fardanKey : currentPersonKey;
@@ -372,6 +375,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
             registry={registry}
             onSelectPerson={(key) => handleOpenPerson(key)}
             onSwitchToTree={onSwitchToFullTree}
+            isPrivacyRestricted={isPrivacyRestricted}
           />
 
           {/* Founding Ancestors Portal */}
@@ -519,6 +523,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               registry={registry}
               onSelectPerson={(key) => handleOpenPerson(key)}
               onSwitchToTree={onSwitchToFullTree}
+              isPrivacyRestricted={isPrivacyRestricted}
             />
           </div>
 
@@ -780,7 +785,9 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold font-['Alexandria'] text-slate-900">
-                أبناء وبنات {currentPerson.name} ({children.length})
+                {isPrivacyRestricted
+                  ? `أبناء وذرية ${currentPerson.name} (${sons.length})`
+                  : `أبناء وبنات ${currentPerson.name} (${children.length})`}
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
                 اضغط على أي فرد للدخول إلى قسم أبنائه وذريته
@@ -809,7 +816,10 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {sons.map(son => {
                   const sonBranch = BRANCH_COLORS[son.branch] || BRANCH_COLORS.b0;
-                  const hasChildren = son.childrenKeys.length > 0;
+                  const visibleSonChildrenCount = isPrivacyRestricted
+                    ? son.childrenKeys.map(k => registry.people.get(k)).filter(c => c && !c.deleted && c.gender !== 'f').length
+                    : son.childrenKeys.length;
+                  const hasChildren = visibleSonChildrenCount > 0;
 
                   return (
                     <div
@@ -852,7 +862,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
                           <p className="text-xs text-slate-500 mt-0.5">
                             {hasChildren ? (
                               <span className="font-semibold text-emerald-700">
-                                لديه {son.childrenKeys.length} من الأبناء (اضغط للاستعراض)
+                                لديه {visibleSonChildrenCount} من الأبناء (اضغط للاستعراض)
                               </span>
                             ) : (
                               <span className="text-slate-400">لا يوجد أبناء مسجلون حالياً</span>
@@ -903,87 +913,96 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
 
           {/* Daughters List (الإناث) */}
           {daughters.length > 0 && (
-            <div className="space-y-2.5 pt-2">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-rose-500" />
-                <span>البنات ({daughters.length})</span>
-              </h4>
+            isPrivacyRestricted ? (
+              <div className="p-4 bg-white border border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-700 shadow-2xs">
+                <span className="font-bold text-slate-700">البنات:</span>
+                <span className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-full font-bold text-slate-800">
+                  {daughters.length === 1 ? 'بنت واحدة' : daughters.length === 2 ? 'بنتان' : `${daughters.length} بنات`}
+                </span>
+              </div>
+            ) : (
+              <div className="space-y-2.5 pt-2">
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  <span>البنات ({daughters.length})</span>
+                </h4>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {daughters.map(dau => {
-                  const hasChildren = dau.childrenKeys.length > 0;
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {daughters.map(dau => {
+                    const hasChildren = dau.childrenKeys.length > 0;
 
-                  return (
-                    <div
-                      key={`dau-${dau.key}`}
-                      onClick={() => handleOpenPerson(dau.key)}
-                      className="group bg-white hover:bg-rose-50/40 border border-slate-200 hover:border-rose-400 rounded-2xl p-4 shadow-2xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-3"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base flex-shrink-0 overflow-hidden bg-rose-50 text-rose-700 border border-rose-200 group-hover:scale-105 transition-transform">
-                          <MemberAvatar
-                            src={dau.photo}
-                            personKey={dau.key}
-                            name={dau.name}
-                            gender={dau.gender}
-                            imgClassName="w-full h-full object-cover"
-                          />
+                    return (
+                      <div
+                        key={`dau-${dau.key}`}
+                        onClick={() => handleOpenPerson(dau.key)}
+                        className="group bg-white hover:bg-rose-50/40 border border-slate-200 hover:border-rose-400 rounded-2xl p-4 shadow-2xs hover:shadow-md transition-all cursor-pointer flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-base flex-shrink-0 overflow-hidden bg-rose-50 text-rose-700 border border-rose-200 group-hover:scale-105 transition-transform">
+                            <MemberAvatar
+                              src={dau.photo}
+                              personKey={dau.key}
+                              name={dau.name}
+                              gender={dau.gender}
+                              imgClassName="w-full h-full object-cover"
+                            />
+                          </div>
+
+                          <div className="min-w-0">
+                            <h5 className="font-bold text-slate-900 text-sm font-['Alexandria'] group-hover:text-rose-900 transition-colors truncate">
+                              {dau.name}
+                            </h5>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {hasChildren ? (
+                                <span className="font-semibold text-rose-700">
+                                  {dau.childrenKeys.length} من الذرية (اضغط للاستعراض)
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">ابنة {currentPerson.name}</span>
+                              )}
+                            </p>
+                          </div>
                         </div>
 
-                        <div className="min-w-0">
-                          <h5 className="font-bold text-slate-900 text-sm font-['Alexandria'] group-hover:text-rose-900 transition-colors truncate">
-                            {dau.name}
-                          </h5>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            {hasChildren ? (
-                              <span className="font-semibold text-rose-700">
-                                {dau.childrenKeys.length} من الذرية (اضغط للاستعراض)
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">ابنة {currentPerson.name}</span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        {isAuthorized && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenEditModal(dau.key);
-                              }}
-                              className="p-2 text-slate-500 hover:text-rose-800 hover:bg-rose-100/80 rounded-xl transition-colors cursor-pointer"
-                              title={`تعديل بيانات ${dau.name}`}
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {onDeletePerson && !PROTECTED_TRUNK_KEYS.has(dau.key) && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {isAuthorized && (
+                            <>
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  onDeletePerson(dau.key);
+                                  onOpenEditModal(dau.key);
                                 }}
-                                className="p-2 text-rose-500 hover:text-white hover:bg-rose-600 rounded-xl transition-colors cursor-pointer"
-                                title={`إلغاء وحذف ${dau.name}`}
+                                className="p-2 text-slate-500 hover:text-rose-800 hover:bg-rose-100/80 rounded-xl transition-colors cursor-pointer"
+                                title={`تعديل بيانات ${dau.name}`}
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Edit3 className="w-4 h-4" />
                               </button>
-                            )}
-                          </>
-                        )}
-                        <div className="p-2 text-slate-400 group-hover:text-rose-700 group-hover:translate-x-[-3px] transition-all">
-                          <ChevronLeft className="w-5 h-5" />
+                              {onDeletePerson && !PROTECTED_TRUNK_KEYS.has(dau.key) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDeletePerson(dau.key);
+                                  }}
+                                  className="p-2 text-rose-500 hover:text-white hover:bg-rose-600 rounded-xl transition-colors cursor-pointer"
+                                  title={`إلغاء وحذف ${dau.name}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </>
+                          )}
+                          <div className="p-2 text-slate-400 group-hover:text-rose-700 group-hover:translate-x-[-3px] transition-all">
+                            <ChevronLeft className="w-5 h-5" />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Empty state if no children registered */}
@@ -1014,6 +1033,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               registry={registry}
               onSelectPerson={(key) => handleOpenPerson(key)}
               onSwitchToTree={onSwitchToFullTree}
+              isPrivacyRestricted={isPrivacyRestricted}
             />
           </div>
 

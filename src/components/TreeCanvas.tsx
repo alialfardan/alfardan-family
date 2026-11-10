@@ -24,6 +24,7 @@ interface TreeCanvasProps {
   filterBranch: string | null;
   isAuthorized?: boolean;
   onOpenSearchResults?: (query: string) => void;
+  isPrivacyRestricted?: boolean;
 }
 
 export interface D3GroupNodeData {
@@ -104,6 +105,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   filterBranch,
   isAuthorized = false,
   onOpenSearchResults,
+  isPrivacyRestricted = false,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const zoomGRef = useRef<SVGGElement | null>(null);
@@ -132,8 +134,8 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
 
   const quickResults = useMemo(() => {
     if (!quickSearchQuery.trim()) return [];
-    return searchFamilyMembers(quickSearchQuery, registry.people, 20);
-  }, [quickSearchQuery, registry]);
+    return searchFamilyMembers(quickSearchQuery, registry.people, 20, { excludeFemales: isPrivacyRestricted });
+  }, [quickSearchQuery, registry, isPrivacyRestricted]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -195,7 +197,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
       }
 
       const sons = uniqueChildren.filter(c => c.gender !== 'f');
-      const daughters = uniqueChildren.filter(c => c.gender === 'f');
+      const daughters = isPrivacyRestricted ? [] : uniqueChildren.filter(c => c.gender === 'f');
 
       // Rule:
       // If the individual has daughters (daughters.length > 0):
@@ -267,7 +269,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
 
     const tree = buildNode(rootPerson);
     return tree ? d3.hierarchy(tree) : null;
-  }, [registry, expandedKeys, filterBranch, collapsedGroupKeys]);
+  }, [registry, expandedKeys, filterBranch, collapsedGroupKeys, isPrivacyRestricted]);
 
   // Compute D3 Tree layout
   const { nodes, links } = useMemo(() => {
@@ -598,7 +600,12 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               const branchInfo = BRANCH_COLORS[person.branch] || BRANCH_COLORS.b0;
               const isFardan = person.key === registry.fardanKey;
               const isFemale = person.gender === 'f';
-              const hasChildren = person.childrenKeys.length > 0;
+              const visibleChildrenCount = isPrivacyRestricted
+                ? person.childrenKeys
+                    .map(k => registry.people.get(k))
+                    .filter(c => c && !c.deleted && c.gender !== 'f').length
+                : person.childrenKeys.length;
+              const hasChildren = visibleChildrenCount > 0;
               const isExpanded = expandedKeys.has(person.key);
 
               // Position coordinates: RTL flip
@@ -780,7 +787,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                         fontSize="10"
                         fontWeight="700"
                       >
-                        {isExpanded ? '−' : person.childrenKeys.length}
+                        {isExpanded ? '−' : visibleChildrenCount}
                       </text>
                     </g>
                   )}

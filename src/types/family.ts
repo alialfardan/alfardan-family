@@ -116,6 +116,7 @@ export interface FamilyState {
   spouses?: Record<string, SpouseInfo[]>;
   mothers?: Record<string, MotherInfo>;
   contactInfo?: ContactInfo;
+  privacyModeEnabled?: boolean;
   updatedAt?: number;
 }
 

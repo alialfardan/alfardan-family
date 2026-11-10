@@ -10,6 +10,7 @@ interface PedigreeCertificateModalProps {
   personKey: string;
   registry: FamilyTreeProcessed;
   onSelectPerson: (key: string) => void;
+  isPrivacyRestricted?: boolean;
 }
 
 interface FontOption {
@@ -55,6 +56,7 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
   personKey,
   registry,
   onSelectPerson: _onSelectPerson,
+  isPrivacyRestricted = false,
 }) => {
   const [currentKey, setCurrentKey] = useState(personKey || registry.fardanKey);
   const [searchQuery, setSearchQuery] = useState('');
@@ -84,7 +86,7 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
 
   // Search candidates
   const candidates: ProcessedPerson[] = searchQuery.trim()
-    ? searchFamilyMembers(searchQuery, registry.people, 12)
+    ? searchFamilyMembers(searchQuery, registry.people, 12, { excludeFemales: isPrivacyRestricted })
     : [];
 
   const todayArabic = new Date().toLocaleDateString('ar-BH', {

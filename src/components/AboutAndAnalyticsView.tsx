@@ -103,6 +103,7 @@ interface AboutAndAnalyticsViewProps {
   onImportBackup: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onOpenInteractiveTree?: () => void;
   isAuthorized?: boolean;
+  isPrivacyRestricted?: boolean;
   onOpenAuthModal?: () => void;
   onOpenSearchResults?: (query: string) => void;
 }
@@ -115,6 +116,7 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
   onImportBackup,
   onOpenInteractiveTree,
   isAuthorized = false,
+  isPrivacyRestricted = false,
   onOpenAuthModal,
   onOpenSearchResults,
 }) => {
@@ -228,22 +230,24 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
 
   // Filtered Frequent Names
   const displayedFrequentNames = useMemo(() => {
-    let list = topNames.filter((n) => n.totalCount > 1);
+    let list = topNames.filter((n) =>
+      isPrivacyRestricted ? n.maleCount > 1 && n.primaryGender !== 'f' : n.totalCount > 1
+    );
 
-    if (frequentNamesFilter === 'm') {
+    if (isPrivacyRestricted || frequentNamesFilter === 'm') {
       list = list.filter((n) => n.maleCount > 0).sort((a, b) => b.maleCount - a.maleCount);
     } else if (frequentNamesFilter === 'f') {
       list = list.filter((n) => n.femaleCount > 0).sort((a, b) => b.femaleCount - a.femaleCount);
     }
 
     return list;
-  }, [topNames, frequentNamesFilter]);
+  }, [topNames, frequentNamesFilter, isPrivacyRestricted]);
 
   // Filtered Unique Names
   const displayedUniqueNames = useMemo(() => {
     let list = uniqueNames;
 
-    if (uniqueNamesFilter === 'm') {
+    if (isPrivacyRestricted || uniqueNamesFilter === 'm') {
       list = list.filter((u) => u.maleCount === 1);
     } else if (uniqueNamesFilter === 'f') {
       list = list.filter((u) => u.femaleCount === 1);
@@ -255,7 +259,7 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
     }
 
     return list;
-  }, [uniqueNames, uniqueNamesFilter, uniqueNamesSearch]);
+  }, [uniqueNames, uniqueNamesFilter, uniqueNamesSearch, isPrivacyRestricted]);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-10 font-['Readex_Pro',sans-serif]">
@@ -756,44 +760,46 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
           </div>
 
           {/* Gender Filter Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl self-start sm:self-center">
-            <button
-              onClick={() => setFrequentNamesFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                frequentNamesFilter === 'all'
-                  ? 'bg-white text-emerald-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              الكل ({nameStatsSummary.topFrequentCount})
-            </button>
-            <button
-              onClick={() => setFrequentNamesFilter('m')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                frequentNamesFilter === 'm'
-                  ? 'bg-emerald-800 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>رجال 👨</span>
-              <span className="text-[10px] opacity-80">
-                ({topNames.filter((n) => n.maleCount > 0 && n.totalCount > 1).length})
-              </span>
-            </button>
-            <button
-              onClick={() => setFrequentNamesFilter('f')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                frequentNamesFilter === 'f'
-                  ? 'bg-pink-700 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>نساء 👩</span>
-              <span className="text-[10px] opacity-80">
-                ({topNames.filter((n) => n.femaleCount > 0 && n.totalCount > 1).length})
-              </span>
-            </button>
-          </div>
+          {!isPrivacyRestricted && (
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl self-start sm:self-center">
+              <button
+                onClick={() => setFrequentNamesFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  frequentNamesFilter === 'all'
+                    ? 'bg-white text-emerald-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                الكل ({nameStatsSummary.topFrequentCount})
+              </button>
+              <button
+                onClick={() => setFrequentNamesFilter('m')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  frequentNamesFilter === 'm'
+                    ? 'bg-emerald-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>رجال 👨</span>
+                <span className="text-[10px] opacity-80">
+                  ({topNames.filter((n) => n.maleCount > 0 && n.totalCount > 1).length})
+                </span>
+              </button>
+              <button
+                onClick={() => setFrequentNamesFilter('f')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  frequentNamesFilter === 'f'
+                    ? 'bg-pink-700 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>نساء 👩</span>
+                <span className="text-[10px] opacity-80">
+                  ({topNames.filter((n) => n.femaleCount > 0 && n.totalCount > 1).length})
+                </span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Top 3 Podium Highlights */}
@@ -986,40 +992,42 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
 
         {/* Filter Tabs & Search Bar */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl">
-            <button
-              onClick={() => setUniqueNamesFilter('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                uniqueNamesFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              الكل ({uniqueNames.length})
-            </button>
-            <button
-              onClick={() => setUniqueNamesFilter('m')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                uniqueNamesFilter === 'm'
-                  ? 'bg-emerald-800 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>رجال 👨</span>
-              <span className="text-[10px] opacity-80">({nameStatsSummary.maleUniqueCount})</span>
-            </button>
-            <button
-              onClick={() => setUniqueNamesFilter('f')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
-                uniqueNamesFilter === 'f'
-                  ? 'bg-pink-700 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>نساء 👩</span>
-              <span className="text-[10px] opacity-80">({nameStatsSummary.femaleUniqueCount})</span>
-            </button>
-          </div>
+          {!isPrivacyRestricted && (
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl">
+              <button
+                onClick={() => setUniqueNamesFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  uniqueNamesFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                الكل ({uniqueNames.length})
+              </button>
+              <button
+                onClick={() => setUniqueNamesFilter('m')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  uniqueNamesFilter === 'm'
+                    ? 'bg-emerald-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>رجال 👨</span>
+                <span className="text-[10px] opacity-80">({nameStatsSummary.maleUniqueCount})</span>
+              </button>
+              <button
+                onClick={() => setUniqueNamesFilter('f')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                  uniqueNamesFilter === 'f'
+                    ? 'bg-pink-700 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>نساء 👩</span>
+                <span className="text-[10px] opacity-80">({nameStatsSummary.femaleUniqueCount})</span>
+              </button>
+            </div>
+          )}
 
           {/* Quick Search in Unique Names */}
           <div className="relative flex-1 sm:max-w-xs">

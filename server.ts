@@ -162,6 +162,7 @@ async function syncToFirestoreFromServer(familyData: any): Promise<void> {
         photo: nf?.photo && typeof nf.photo === 'string' && nf.photo.startsWith('data:image/') ? undefined : nf?.photo
       })),
       contactInfo: familyData.contactInfo || {},
+      privacyModeEnabled: typeof familyData.privacyModeEnabled === 'boolean' ? familyData.privacyModeEnabled : true,
       updatedAt: safeUpdatedAt
     });
     await setDoc(doc(serverDb, 'family_tree', 'state'), payload, { merge: true });
@@ -955,7 +956,10 @@ async function startServer() {
           mothers: state?.mothers
             ? { ...(existingData?.mothers || {}), ...state.mothers }
             : (existingData?.mothers || {}),
-          contactInfo: state?.contactInfo ? state.contactInfo : (existingData?.contactInfo || {})
+          contactInfo: state?.contactInfo ? state.contactInfo : (existingData?.contactInfo || {}),
+          privacyModeEnabled: typeof state?.privacyModeEnabled === 'boolean'
+            ? state.privacyModeEnabled
+            : (typeof existingData?.privacyModeEnabled === 'boolean' ? existingData.privacyModeEnabled : true)
         };
 
         const existingWithoutTs = {
@@ -967,7 +971,8 @@ async function startServer() {
           notableFigures: existingData?.notableFigures || [],
           spouses: existingData?.spouses || {},
           mothers: existingData?.mothers || {},
-          contactInfo: existingData?.contactInfo || {}
+          contactInfo: existingData?.contactInfo || {},
+          privacyModeEnabled: typeof existingData?.privacyModeEnabled === 'boolean' ? existingData.privacyModeEnabled : true
         };
 
         const dataBodyChanged =

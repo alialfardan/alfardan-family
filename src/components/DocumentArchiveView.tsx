@@ -41,6 +41,7 @@ interface DocumentArchiveViewProps {
   onSelectPerson?: (key: string, opts?: { reveal?: boolean; center?: boolean }) => void;
   onSwitchToTree?: (key?: string) => void;
   onShowToast?: (message: string, type?: 'success' | 'info') => void;
+  isPrivacyRestricted?: boolean;
 }
 
 const CATEGORY_MAP: Record<string, { label: string; bg: string; text: string; border: string }> = {
@@ -80,7 +81,8 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
   onOpenAuthModal,
   onSelectPerson,
   onSwitchToTree,
-  onShowToast
+  onShowToast,
+  isPrivacyRestricted = false
 }) => {
   const [docZoom, setDocZoom] = useState(1);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -151,7 +153,8 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
 
         const matchesTagged = (photo.taggedPersonKeys || []).some(key => {
           const person = registry?.people?.get(key);
-          return person && normalizeArabic(person.name).includes(qNorm);
+          if (!person || (isPrivacyRestricted && person.gender === 'f')) return false;
+          return normalizeArabic(person.name).includes(qNorm);
         });
 
         if (
@@ -167,7 +170,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
 
       return true;
     });
-  }, [galleryPhotos, activeCategory, searchQuery, registry]);
+  }, [galleryPhotos, activeCategory, searchQuery, registry, isPrivacyRestricted]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { all: galleryPhotos.length };
@@ -721,7 +724,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                           <div className="flex flex-wrap gap-1">
                             {photo.taggedPersonKeys.map(key => {
                               const person = registry.people.get(key);
-                              if (!person) return null;
+                              if (!person || (isPrivacyRestricted && person.gender === 'f')) return null;
                               return (
                                 <button
                                   key={key}
@@ -962,7 +965,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                     <div className="space-y-1.5 max-h-48 overflow-y-auto">
                       {currentPhoto.taggedPersonKeys.map(key => {
                         const person = registry.people.get(key);
-                        if (!person) return null;
+                        if (!person || (isPrivacyRestricted && person.gender === 'f')) return null;
                         return (
                           <div
                             key={key}

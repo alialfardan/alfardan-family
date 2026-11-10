@@ -51,6 +51,7 @@ interface PersonDetailDrawerProps {
   onDeleteMother?: (personKey: string) => void;
   onUpdateDeathStatus?: (personKey: string, isDeceased: boolean, deathYear: number | null) => void;
   onUpdateBirthDate?: (personKey: string, birthDate: string | null, year: number | null) => void;
+  isPrivacyRestricted?: boolean;
 }
 
 export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
@@ -71,6 +72,7 @@ export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
   onDeleteMother,
   onUpdateDeathStatus,
   onUpdateBirthDate,
+  isPrivacyRestricted = false,
 }) => {
   const person = registry.people.get(personKey);
   const [copied, setCopied] = useState(false);
@@ -314,7 +316,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             الجيل {person.generation}
           </span>
 
-          {person.mother && (
+          {!isPrivacyRestricted && person.mother && (
             <span
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200"
               title={`الوالدة: ${person.mother.name}`}
@@ -420,7 +422,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
               </p>
             )}
 
-            {person.mother && (
+            {!isPrivacyRestricted && person.mother && (
               <p className="text-xs text-slate-500 mt-0.5">
                 <span>الوالدة:{' '}</span>
                 {person.mother.isFromFamily && person.mother.personKey ? (
@@ -749,7 +751,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
         <div className="border border-slate-200/90 rounded-2xl p-3.5 bg-white shadow-2xs space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-              الوالدان ونسب الأبوين
+              {isPrivacyRestricted ? 'الوالد ونسب الأب' : 'الوالدان ونسب الأبوين'}
             </span>
             {isAuthorized && (
               <button
@@ -761,7 +763,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className={isPrivacyRestricted ? 'grid grid-cols-1 gap-2' : 'grid grid-cols-2 gap-2'}>
             {/* Father */}
             <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl">
               <span className="text-[10px] text-emerald-800 font-bold block">الوالد (الأب)</span>
@@ -777,38 +779,40 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
               )}
             </div>
 
-            {/* Mother */}
-            <div className="p-2.5 bg-rose-50/60 border border-rose-200/90 rounded-xl">
-              <span className="text-[10px] text-rose-800 font-bold block">الوالدة (الأم)</span>
-              {person.mother ? (
-                <div>
-                  {person.mother.isFromFamily && person.mother.personKey ? (
-                    <button
-                      onClick={() => onSelectPerson(person.mother!.personKey!, { reveal: true, center: true })}
-                      className="font-bold text-xs text-rose-950 hover:underline mt-0.5 text-right block truncate cursor-pointer"
-                      title="عرض بطاقة الوالدة في الشجرة"
-                    >
-                      {person.mother.name}
-                    </button>
-                  ) : (
-                    <span className="font-bold text-xs text-slate-800 mt-0.5 block truncate">
-                      {person.mother.name}
+            {/* Mother (Hidden in Visitor Privacy Mode) */}
+            {!isPrivacyRestricted && (
+              <div className="p-2.5 bg-rose-50/60 border border-rose-200/90 rounded-xl">
+                <span className="text-[10px] text-rose-800 font-bold block">الوالدة (الأم)</span>
+                {person.mother ? (
+                  <div>
+                    {person.mother.isFromFamily && person.mother.personKey ? (
+                      <button
+                        onClick={() => onSelectPerson(person.mother!.personKey!, { reveal: true, center: true })}
+                        className="font-bold text-xs text-rose-950 hover:underline mt-0.5 text-right block truncate cursor-pointer"
+                        title="عرض بطاقة الوالدة في الشجرة"
+                      >
+                        {person.mother.name}
+                      </button>
+                    ) : (
+                      <span className="font-bold text-xs text-slate-800 mt-0.5 block truncate">
+                        {person.mother.name}
+                      </span>
+                    )}
+                    <span className="text-[10px] text-rose-700 block truncate">
+                      {person.mother.isFromFamily ? 'من عائلة الفردان' : person.mother.familyOrigin || 'من خارج العائلة'}
                     </span>
-                  )}
-                  <span className="text-[10px] text-rose-700 block truncate">
-                    {person.mother.isFromFamily ? 'من عائلة الفردان' : person.mother.familyOrigin || 'من خارج العائلة'}
+                  </div>
+                ) : (
+                  <span className="text-xs text-slate-400 italic block mt-0.5">
+                    لم توثق بعد
                   </span>
-                </div>
-              ) : (
-                <span className="text-xs text-slate-400 italic block mt-0.5">
-                  لم توثق بعد
-                </span>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Dedicated Section: نسبة للأم (من زوجات الأب) خاصة إذا كان الأب متزوجاً من أكثر من زوجة */}
-          {parent && fatherSpouses.length > 0 && (
+          {!isPrivacyRestricted && parent && fatherSpouses.length > 0 && (
             <div className="mt-2 p-2.5 rounded-xl border bg-gradient-to-r from-rose-50/70 via-pink-50/40 to-amber-50/30 border-rose-200/80 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
@@ -1067,7 +1071,8 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
           )}
         </div>
 
-        {/* Spouses / Wives Section (الزوجات أو الأزواج) */}
+        {/* Spouses / Wives Section (الزوجات أو الأزواج) - Hidden in Visitor Privacy Mode */}
+        {!isPrivacyRestricted && (
         <div className="border border-slate-200/90 rounded-2xl p-4 bg-white shadow-2xs space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -1264,8 +1269,9 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             </div>
           )}
         </div>
+        )}
 
-        {/* Children & Descendants - Beautifully Grouped by Spouse */}
+        {/* Children & Descendants - Beautifully Grouped by Spouse (or Flat Male List + Daughters Count in Visitor Mode) */}
         <div className="space-y-3.5">
           <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
             <div className="flex items-center gap-2">
@@ -1293,8 +1299,8 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             )}
           </div>
 
-          {/* If the person has recorded spouses: group children distinctly per spouse */}
-          {childrenBySpouse.groups.length > 0 ? (
+          {/* If the person has recorded spouses and not in visitor privacy mode: group children distinctly per spouse */}
+          {!isPrivacyRestricted && childrenBySpouse.groups.length > 0 ? (
             <div className="space-y-4">
               {childrenBySpouse.groups.map(group => {
                 const sp = group.spouse;
@@ -1545,14 +1551,16 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
                             />
                           </div>
                           <span>{child.name}</span>
-                          {child.mother?.name && (hasMultipleWives || spouses.length > 1) && (
+                          {!isPrivacyRestricted && child.mother?.name && (hasMultipleWives || spouses.length > 1) && (
                             <span className="text-[9px] font-semibold text-rose-700 bg-rose-50/90 border border-rose-200 px-1 py-0.2 rounded-md">
                               أمه: {child.mother.name}
                             </span>
                           )}
                           {child.childrenKeys.length > 0 && (
                             <span className="text-[10px] text-slate-400 group-hover:text-emerald-600">
-                              ({child.childrenKeys.length})
+                              ({isPrivacyRestricted
+                                ? child.childrenKeys.map(k => registry.people.get(k)).filter(c => c && !c.deleted && c.gender !== 'f').length
+                                : child.childrenKeys.length})
                             </span>
                           )}
                         </button>
@@ -1563,40 +1571,49 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
               )}
 
               {daughtersCount > 0 && (
-                <div>
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-800 mb-1.5">
-                    <span>🧕 قسم البنات (الكريمات) ({daughtersCount}):</span>
+                isPrivacyRestricted ? (
+                  <div className="p-3 bg-slate-50 border border-slate-200/90 rounded-xl flex items-center justify-between text-xs text-slate-700">
+                    <span className="font-bold text-slate-700">البنات:</span>
+                    <span className="px-2.5 py-0.5 bg-white border border-slate-200 rounded-full font-bold text-slate-800">
+                      {daughtersCount === 1 ? 'بنت واحدة' : daughtersCount === 2 ? 'بنتان' : `${daughtersCount} بنات`}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {children.filter(c => c.gender === 'f').map((child: ProcessedPerson) => (
-                      <button
-                        key={`child-${child.key}`}
-                        onClick={() => onSelectPerson(child.key, { reveal: true, center: true })}
-                        className="group flex items-center gap-2 px-2.5 py-1.5 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200 rounded-xl text-xs font-medium text-rose-950 transition-all cursor-pointer"
-                      >
-                        <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center text-[8px] font-bold flex-shrink-0 bg-rose-100 text-rose-700 border border-rose-300">
-                          <MemberAvatar
-                            src={child.photo}
-                            personKey={child.key}
-                            name={child.name}
-                            gender={child.gender}
-                          />
-                        </div>
-                        <span>{child.name}</span>
-                        {child.mother?.name && (hasMultipleWives || spouses.length > 1) && (
-                          <span className="text-[9px] font-semibold text-rose-700 bg-white border border-rose-200 px-1 py-0.2 rounded-md">
-                            أمها: {child.mother.name}
-                          </span>
-                        )}
-                        {child.childrenKeys.length > 0 && (
-                          <span className="text-[10px] text-rose-400 group-hover:text-rose-700">
-                            ({child.childrenKeys.length})
-                          </span>
-                        )}
-                      </button>
-                    ))}
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-800 mb-1.5">
+                      <span>🧕 قسم البنات (الكريمات) ({daughtersCount}):</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {children.filter(c => c.gender === 'f').map((child: ProcessedPerson) => (
+                        <button
+                          key={`child-${child.key}`}
+                          onClick={() => onSelectPerson(child.key, { reveal: true, center: true })}
+                          className="group flex items-center gap-2 px-2.5 py-1.5 bg-rose-50/70 hover:bg-rose-100/80 border border-rose-200 rounded-xl text-xs font-medium text-rose-950 transition-all cursor-pointer"
+                        >
+                          <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center text-[8px] font-bold flex-shrink-0 bg-rose-100 text-rose-700 border border-rose-300">
+                            <MemberAvatar
+                              src={child.photo}
+                              personKey={child.key}
+                              name={child.name}
+                              gender={child.gender}
+                            />
+                          </div>
+                          <span>{child.name}</span>
+                          {child.mother?.name && (hasMultipleWives || spouses.length > 1) && (
+                            <span className="text-[9px] font-semibold text-rose-700 bg-white border border-rose-200 px-1 py-0.2 rounded-md">
+                              أمها: {child.mother.name}
+                            </span>
+                          )}
+                          {child.childrenKeys.length > 0 && (
+                            <span className="text-[10px] text-rose-400 group-hover:text-rose-700">
+                              ({child.childrenKeys.length})
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )
               )}
             </div>
           ) : (
@@ -1605,42 +1622,56 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
         </div>
 
         {/* Siblings List */}
-        {siblings.length > 0 && (
-          <div>
-            <h3 className="text-xs font-bold text-slate-700 mb-2.5 uppercase tracking-wider">
-              الإخوة والأخوات ({siblings.length})
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {siblings.map((sib: ProcessedPerson) => {
-                const sibBranch = BRANCH_COLORS[sib.branch] || BRANCH_COLORS.b0;
-                return (
-                  <button
-                    key={`sib-${sib.key}`}
-                    onClick={() => onSelectPerson(sib.key, { reveal: true, center: true })}
-                    className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 transition-colors cursor-pointer"
-                  >
-                    <div
-                      className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center text-[8px] font-bold flex-shrink-0"
-                      style={{
-                        backgroundColor: sibBranch.bg,
-                        color: sibBranch.accent,
-                        border: `1px solid ${sibBranch.border}`
-                      }}
-                    >
-                      <MemberAvatar
-                        src={sib.photo}
-                        personKey={sib.key}
-                        name={sib.name}
-                        gender={sib.gender}
-                      />
-                    </div>
-                    <span>{sib.name}</span>
-                  </button>
-                );
-              })}
+        {siblings.length > 0 && (() => {
+          const visibleSiblings = isPrivacyRestricted ? siblings.filter(s => s.gender !== 'f') : siblings;
+          const sistersCount = siblings.filter(s => s.gender === 'f').length;
+          if (visibleSiblings.length === 0 && sistersCount === 0) return null;
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  {isPrivacyRestricted ? `الإخوة (${visibleSiblings.length})` : `الإخوة والأخوات (${siblings.length})`}
+                </h3>
+                {isPrivacyRestricted && sistersCount > 0 && (
+                  <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                    الأخوات: {sistersCount === 1 ? 'أخت واحدة' : sistersCount === 2 ? 'أختان' : `${sistersCount} أخوات`}
+                  </span>
+                )}
+              </div>
+              {visibleSiblings.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {visibleSiblings.map((sib: ProcessedPerson) => {
+                    const sibBranch = BRANCH_COLORS[sib.branch] || BRANCH_COLORS.b0;
+                    return (
+                      <button
+                        key={`sib-${sib.key}`}
+                        onClick={() => onSelectPerson(sib.key, { reveal: true, center: true })}
+                        className="flex items-center gap-2 px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-700 transition-colors cursor-pointer"
+                      >
+                        <div
+                          className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center text-[8px] font-bold flex-shrink-0"
+                          style={{
+                            backgroundColor: sibBranch.bg,
+                            color: sibBranch.accent,
+                            border: `1px solid ${sibBranch.border}`
+                          }}
+                        >
+                          <MemberAvatar
+                            src={sib.photo}
+                            personKey={sib.key}
+                            name={sib.name}
+                            gender={sib.gender}
+                          />
+                        </div>
+                        <span>{sib.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Edit & Delete Actions - Authorized Only */}
         {isAuthorized && (

@@ -82,6 +82,20 @@ export default function App() {
     return false;
   });
 
+  // Family Member Unlocked Mode State (Default: false unless unlocked via password in localStorage)
+  const [isFamilyMember, setIsFamilyMember] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('alfardan_family_unlocked') === 'true';
+    } catch (_) {
+      return false;
+    }
+  });
+
+  // Whether women privacy filter is enabled in site settings (defaults to true)
+  const privacyModeEnabled = familyState.privacyModeEnabled !== false;
+  // Effective read-only UI filter: active ONLY when privacyModeEnabled is true AND visitor has not unlocked family mode or admin mode
+  const isPrivacyRestricted = privacyModeEnabled && !isFamilyMember && !isAuthorized;
+
   // Notification State
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() => getNotificationPermission());
 
@@ -516,6 +530,32 @@ export default function App() {
     }, 4500);
   }, []);
 
+  // Family Mode Unlock / Lock Handlers (Header Button «أنا من آل فردان 🔒»)
+  const handleUnlockFamilyMode = useCallback(() => {
+    try {
+      localStorage.setItem('alfardan_family_unlocked', 'true');
+    } catch (_) {}
+    setIsFamilyMember(true);
+    showToast('مرحباً بك في وضع العائلة الكامل — تم إظهار كافة البيانات والأسماء 🔓', 'success');
+  }, [showToast]);
+
+  const handleLockFamilyMode = useCallback(() => {
+    try {
+      localStorage.removeItem('alfardan_family_unlocked');
+    } catch (_) {}
+    setIsFamilyMember(false);
+    setSelectedKey(prevKey => {
+      const p = registry.people.get(prevKey);
+      return p?.gender === 'f' ? registry.fardanKey : prevKey;
+    });
+    setExplorerPersonKey(prevKey => {
+      if (prevKey === 'home') return 'home';
+      const p = registry.people.get(prevKey);
+      return p?.gender === 'f' ? registry.fardanKey : prevKey;
+    });
+    showToast('تم قفل وضع العائلة والعودة إلى وضع الزوار العام 🔒', 'info');
+  }, [registry, showToast]);
+
   // Real-time Cloud Notifications Listener (Dual-path: SW system alert + In-App Toast)
   useEffect(() => {
     const unsubscribe = listenToCloudNotifications((notif) => {
@@ -631,6 +671,30 @@ export default function App() {
       console.warn('Immediate cloud sync error:', err);
     });
   }, []);
+
+  // Admin Toggle for Women's Privacy Mode (persisted in initialTreeData.json, Firestore, and GitHub)
+  const handleTogglePrivacyMode = useCallback((enabled: boolean) => {
+    if (!isAuthorized) {
+      showToast('هذا الإعداد مخصص للمشرف فقط', 'info');
+      return;
+    }
+    setFamilyState(prev => {
+      const nextTs = getMonotonicTimestamp(prev);
+      const nextState: FamilyState = {
+        ...prev,
+        privacyModeEnabled: enabled,
+        updatedAt: nextTs
+      };
+      persistAndSyncImmediately(nextState);
+      return nextState;
+    });
+    showToast(
+      enabled
+        ? 'تم تفعيل نظام خصوصية النساء للزوار 🔒 (يظهر زر «أنا من آل فردان» وتُخفى أسماء النساء للزوار)'
+        : 'تم إيقاف نظام خصوصية النساء 🔓 (الشجرة الكاملة بجميع الأسماء متاحة لجميع الزوار بدون كلمة مرور)',
+      'success'
+    );
+  }, [isAuthorized, persistAndSyncImmediately, showToast]);
 
   // Add / Edit submission
   const handleAddEditSubmit = (data: {
@@ -1771,6 +1835,7 @@ export default function App() {
               spouses: parsed.spouses || prev.spouses || {},
               mothers: parsed.mothers || prev.mothers || {},
               contactInfo: parsed.contactInfo ? resolveContactInfo(parsed.contactInfo) : prev.contactInfo,
+              privacyModeEnabled: typeof parsed.privacyModeEnabled === 'boolean' ? parsed.privacyModeEnabled : prev.privacyModeEnabled !== false,
               updatedAt: nextTs
             };
             persistAndSyncImmediately(nextState);
@@ -1814,6 +1879,11 @@ export default function App() {
         isSavingForPublish={isSavingForPublish}
         isNotificationsGranted={notificationPermission === 'granted'}
         onEnableNotifications={handleEnableNotifications}
+        privacyModeEnabled={privacyModeEnabled}
+        onTogglePrivacyMode={handleTogglePrivacyMode}
+        isFamilyMember={isFamilyMember}
+        onUnlockFamilyMode={handleUnlockFamilyMode}
+        onLockFamilyMode={handleLockFamilyMode}
       />
 
       {/* Main View Area - Margin right on all screens to accommodate right-side navigation rail */}
@@ -1854,6 +1924,7 @@ export default function App() {
                 setCurrentTab('tree');
               }}
               isAuthorized={isAuthorized}
+              isPrivacyRestricted={isPrivacyRestricted}
               onOpenContact={() => setIsContactModalOpen(true)}
             />
           </div>
@@ -1887,6 +1958,7 @@ export default function App() {
               onCollapseAll={handleCollapseAll}
               filterBranch={filterBranch}
               isAuthorized={isAuthorized}
+              isPrivacyRestricted={isPrivacyRestricted}
               onOpenSearchResults={(q) => setSearchResultsModal({ isOpen: true, query: q })}
             />
 
@@ -1905,6 +1977,7 @@ export default function App() {
                   onChangePhoto={handleChangePhoto}
                   onOpenCertificate={(personKey) => setCertificateModal({ isOpen: true, personKey })}
                   isAuthorized={isAuthorized}
+                  isPrivacyRestricted={isPrivacyRestricted}
                   onSaveSpouse={handleSaveSpouse}
                   onDeleteSpouse={handleDeleteSpouse}
                   onSaveMother={handleSaveMother}
@@ -1940,6 +2013,7 @@ export default function App() {
               }
               onDeletePerson={handleDeletePerson}
               isAuthorized={isAuthorized}
+              isPrivacyRestricted={isPrivacyRestricted}
               onOpenSearchResults={(q) => setSearchResultsModal({ isOpen: true, query: q })}
             />
           </div>
@@ -1981,6 +2055,7 @@ export default function App() {
                 setCurrentTab('tree');
               }}
               onShowToast={showToast}
+              isPrivacyRestricted={isPrivacyRestricted}
             />
           </div>
         )}
@@ -2025,6 +2100,7 @@ export default function App() {
                 setCurrentTab('tree');
               }}
               isAuthorized={isAuthorized}
+              isPrivacyRestricted={isPrivacyRestricted}
               onOpenAuthModal={() => setIsAuthModalOpen(true)}
               onOpenSearchResults={(q) => setSearchResultsModal({ isOpen: true, query: q })}
             />
@@ -2061,6 +2137,7 @@ export default function App() {
           personKey={certificateModal.personKey || selectedKey || registry.fardanKey}
           registry={registry}
           onSelectPerson={(key) => setSelectedKey(key)}
+          isPrivacyRestricted={isPrivacyRestricted}
         />
       )}
 
@@ -2116,6 +2193,7 @@ export default function App() {
           handleSelectPerson(key, { reveal: true, center: true });
         }}
         isAuthorized={isAuthorized}
+        isPrivacyRestricted={isPrivacyRestricted}
         onOpenAddModal={(parentKey) => setAddEditModal({ isOpen: true, mode: 'add', targetKey: parentKey })}
         onOpenEditModal={(personKey) => setAddEditModal({ isOpen: true, mode: 'edit', targetKey: personKey })}
         onDeletePerson={handleDeletePerson}

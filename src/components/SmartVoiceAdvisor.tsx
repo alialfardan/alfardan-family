@@ -27,6 +27,7 @@ interface SmartVoiceAdvisorProps {
   registry: FamilyTreeProcessed;
   onSelectPerson?: (key: string) => void;
   onSwitchToTree?: (key?: string) => void;
+  isPrivacyRestricted?: boolean;
 }
 
 const MAX_LISTEN_SECONDS = 30;
@@ -34,7 +35,8 @@ const MAX_LISTEN_SECONDS = 30;
 export const SmartVoiceAdvisor: React.FC<SmartVoiceAdvisorProps> = ({
   registry,
   onSelectPerson,
-  onSwitchToTree
+  onSwitchToTree,
+  isPrivacyRestricted = false
 }) => {
   const [question, setQuestion] = useState<string>('');
   const [isListening, setIsListening] = useState<boolean>(false);
@@ -212,7 +214,7 @@ export const SmartVoiceAdvisor: React.FC<SmartVoiceAdvisorProps> = ({
       return;
     }
 
-    const result = askGenealogyAdvisor(qToUse, registry, keyA, keyB);
+    const result = askGenealogyAdvisor(qToUse, registry, keyA, keyB, isPrivacyRestricted);
     setResponse(result);
 
     if (autoSpeak && result.spokenText) {
@@ -374,7 +376,8 @@ export const SmartVoiceAdvisor: React.FC<SmartVoiceAdvisorProps> = ({
         `تحليل نسب وقرابات ${getQuadLineageName(person.key, registry.people, 4)}`,
         profile,
         registry.people,
-        response?.alternativeCandidates?.filter(c => c.key !== person.key) || []
+        response?.alternativeCandidates?.filter(c => c.key !== person.key) || [],
+        isPrivacyRestricted
       );
       setResponse(updated);
       if (autoSpeak) {
@@ -386,8 +389,8 @@ export const SmartVoiceAdvisor: React.FC<SmartVoiceAdvisorProps> = ({
   // Autocomplete results for the helper person picker
   const pickerResults = useMemo(() => {
     if (!pickerSearch.trim()) return [];
-    return searchFamilyMembers(pickerSearch, registry.people, 12);
-  }, [pickerSearch, registry.people]);
+    return searchFamilyMembers(pickerSearch, registry.people, 12, { excludeFemales: isPrivacyRestricted });
+  }, [pickerSearch, registry.people, isPrivacyRestricted]);
 
   const handleCopyResponse = () => {
     if (!response) return;

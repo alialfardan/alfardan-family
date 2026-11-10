@@ -31,6 +31,7 @@ interface SearchResultsModalProps {
   onOpenCertificate: (key: string) => void;
   onGoToTree: (key: string) => void;
   isAuthorized?: boolean;
+  isPrivacyRestricted?: boolean;
   onOpenAddModal?: (parentKey: string) => void;
   onOpenEditModal?: (personKey: string) => void;
   onDeletePerson?: (personKey: string) => void;
@@ -48,6 +49,7 @@ export const SearchResultsModal: React.FC<SearchResultsModalProps> = ({
   onOpenCertificate,
   onGoToTree,
   isAuthorized = false,
+  isPrivacyRestricted = false,
   onOpenAddModal,
   onOpenEditModal,
   onDeletePerson,
@@ -68,16 +70,17 @@ export const SearchResultsModal: React.FC<SearchResultsModalProps> = ({
 
   // Compute matched people
   const matchedPeople = useMemo(() => {
-    const rawMatches = searchFamilyMembers(query, registry.people, 100);
+    const rawMatches = searchFamilyMembers(query, registry.people, 100, { excludeFemales: isPrivacyRestricted });
 
     return rawMatches.filter(p => {
+      if (isPrivacyRestricted && p.gender === 'f') return false;
       if (selectedBranch !== 'all' && p.branch !== selectedBranch) return false;
       if (selectedGender !== 'all' && p.gender !== selectedGender) return false;
       if (selectedGen !== 'all' && p.generation !== parseInt(selectedGen, 10)) return false;
       if (onlyWithPhotos && !p.photo) return false;
       return true;
     });
-  }, [query, registry, selectedBranch, selectedGender, selectedGen, onlyWithPhotos]);
+  }, [query, registry, selectedBranch, selectedGender, selectedGen, onlyWithPhotos, isPrivacyRestricted]);
 
   if (!isOpen) return null;
 
@@ -172,14 +175,16 @@ export const SearchResultsModal: React.FC<SearchResultsModalProps> = ({
                 >
                   ذكور
                 </button>
-                <button
-                  onClick={() => setSelectedGender('f')}
-                  className={`px-2 py-0.5 rounded-lg text-xs ${
-                    selectedGender === 'f' ? 'bg-emerald-800 text-white font-bold' : 'text-slate-600'
-                  }`}
-                >
-                  إناث
-                </button>
+                {!isPrivacyRestricted && (
+                  <button
+                    onClick={() => setSelectedGender('f')}
+                    className={`px-2 py-0.5 rounded-lg text-xs ${
+                      selectedGender === 'f' ? 'bg-emerald-800 text-white font-bold' : 'text-slate-600'
+                    }`}
+                  >
+                    إناث
+                  </button>
+                )}
               </div>
 
               {/* Photo Filter Button */}

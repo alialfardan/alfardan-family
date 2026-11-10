@@ -681,6 +681,18 @@ export function mergeFamilyStates(
     incomingIsNewer
   );
 
+  const mergedPrivacyModeEnabled = incomingIsNewer
+    ? (typeof incoming.privacyModeEnabled === 'boolean'
+        ? incoming.privacyModeEnabled
+        : typeof base.privacyModeEnabled === 'boolean'
+        ? base.privacyModeEnabled
+        : true)
+    : (typeof base.privacyModeEnabled === 'boolean'
+        ? base.privacyModeEnabled
+        : typeof incoming.privacyModeEnabled === 'boolean'
+        ? incoming.privacyModeEnabled
+        : true);
+
   return {
     members: mergedMembers,
     photos: mergedPhotos,
@@ -691,6 +703,7 @@ export function mergeFamilyStates(
     spouses: mergedSpouses,
     mothers: mergedMothers,
     contactInfo: resolveContactInfo(incomingIsNewer ? (incoming.contactInfo || base.contactInfo) : (base.contactInfo || incoming.contactInfo)),
+    privacyModeEnabled: mergedPrivacyModeEnabled,
     updatedAt: Math.max(baseTime, incTime) || BASELINE_SAFE_TS
   };
 }
@@ -741,6 +754,7 @@ export function loadSavedState(): FamilyState {
     archivalPhotos: initialArchival,
     notableFigures: resolveNotableFigures(DEFAULT_FAMILY_DATA.notableFigures),
     contactInfo: resolveContactInfo(DEFAULT_FAMILY_DATA.contactInfo),
+    privacyModeEnabled: typeof DEFAULT_FAMILY_DATA.privacyModeEnabled === 'boolean' ? DEFAULT_FAMILY_DATA.privacyModeEnabled : true,
     updatedAt: DEFAULT_FAMILY_DATA.updatedAt || getLatestMemberTimestamp(DEFAULT_FAMILY_DATA.members)
   };
 
@@ -865,6 +879,7 @@ export async function saveTreeToDisk(
         ...state,
         members: deduplicateMembers(state.members || []),
         photos: cleanPhotos,
+        privacyModeEnabled: typeof state.privacyModeEnabled === 'boolean' ? state.privacyModeEnabled : true,
         updatedAt: normalizeTimestamp(state.updatedAt) || Date.now()
       }
     };
@@ -1389,11 +1404,13 @@ export function getQuadLineageName(
 export function searchFamilyMembers(
   query: string,
   people: Map<string, ProcessedPerson>,
-  limit: number = 60
+  limit: number = 60,
+  options?: { excludeFemales?: boolean }
 ): ProcessedPerson[] {
   const trimmed = query.trim();
   if (!trimmed) return [];
 
+  const excludeFemales = !!options?.excludeFemales;
   const normQuery = normalizeArabic(trimmed);
   const queryParts = trimmed
     .split(/\s+(?:بن|ابن|بنت)\s+/)
@@ -1409,6 +1426,7 @@ export function searchFamilyMembers(
 
   people.forEach((p) => {
     if (p.deleted) return;
+    if (excludeFemales && p.gender === 'f') return;
 
     const normName = normalizeArabic(p.name);
     const rawName = p.name;
@@ -1477,8 +1495,8 @@ export function searchFamilyMembers(
       }
     }
 
-    // Matching spouse name (الزوج / الزوجة)
-    if (p.spouses && p.spouses.length > 0) {
+    // Matching spouse name (الزوج / الزوجة) — disabled in public visitor privacy mode
+    if (!excludeFemales && p.spouses && p.spouses.length > 0) {
       for (const sp of p.spouses) {
         if (!sp.name) continue;
         const normSp = normalizeArabic(sp.name);
@@ -1489,8 +1507,8 @@ export function searchFamilyMembers(
       }
     }
 
-    // Matching mother name (نسب الأم)
-    if (p.mother && p.mother.name) {
+    // Matching mother name (نسب الأم) — disabled in public visitor privacy mode
+    if (!excludeFemales && p.mother && p.mother.name) {
       const normMom = normalizeArabic(p.mother.name);
       if (normMom.includes(normQuery)) {
         score += 160;

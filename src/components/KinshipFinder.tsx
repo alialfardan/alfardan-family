@@ -31,12 +31,14 @@ interface KinshipFinderProps {
   registry: FamilyTreeProcessed;
   onSelectPerson?: (key: string, opts?: { reveal?: boolean; center?: boolean }) => void;
   onSwitchToTree?: (key?: string) => void;
+  isPrivacyRestricted?: boolean;
 }
 
 export const KinshipFinder: React.FC<KinshipFinderProps> = ({
   registry,
   onSelectPerson,
-  onSwitchToTree
+  onSwitchToTree,
+  isPrivacyRestricted = false
 }) => {
   // Key A (Subject - الطرف الأول)
   const [keyA, setKeyA] = useState<string>('');
@@ -78,14 +80,14 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
   // Autocomplete results for Party 1
   const resultsA = useMemo(() => {
     if (!queryA.trim()) return [];
-    return searchFamilyMembers(queryA, registry.people, 40);
-  }, [queryA, registry]);
+    return searchFamilyMembers(queryA, registry.people, 40, { excludeFemales: isPrivacyRestricted });
+  }, [queryA, registry, isPrivacyRestricted]);
 
   // Autocomplete results for Party 2
   const resultsB = useMemo(() => {
     if (!queryB.trim()) return [];
-    return searchFamilyMembers(queryB, registry.people, 40);
-  }, [queryB, registry]);
+    return searchFamilyMembers(queryB, registry.people, 40, { excludeFemales: isPrivacyRestricted });
+  }, [queryB, registry, isPrivacyRestricted]);
 
   // Compute Kinship
   const kinshipResult: KinshipResult | null = useMemo(() => {
@@ -130,10 +132,10 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
     if (!kinshipResult || !personA || !personB) return;
     let text = `صلة النسب والقرابة: «${personA.name}» هو «${kinshipResult.relationshipTitle}» لـ «${personB.name}».\n`;
     text += `• النسب من جهة الأب (العصبة): ${kinshipResult.narrativeExplanation} (الجد المشترك: ${kinshipResult.commonAncestor?.name || 'غير محدد'}).\n`;
-    if (kinshipResult.maternalKinship.hasMaternalRelation) {
+    if (!isPrivacyRestricted && kinshipResult.maternalKinship.hasMaternalRelation) {
       text += `• النسب من جهة الأم (الأخوال): ${kinshipResult.maternalKinship.maternalExplanation}\n`;
     }
-    if (kinshipResult.inLawKinship.hasInLawRelation) {
+    if (!isPrivacyRestricted && kinshipResult.inLawKinship.hasInLawRelation) {
       text += `• صلة المصاهرة ونسب الزوجة: ${kinshipResult.inLawKinship.spousalExplanation || kinshipResult.inLawKinship.spousalTitle}\n`;
     }
     text += `(شجرة عائلة الفردان الكرزكاني)`;
@@ -157,10 +159,10 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
 
     window.speechSynthesis.cancel();
     let spoken = `صلة النسب والقرابة: ${personA.name} هو ${kinshipResult.relationshipTitle} لـ ${personB.name}. ${kinshipResult.narrativeExplanation}`;
-    if (kinshipResult.maternalKinship.hasMaternalRelation) {
+    if (!isPrivacyRestricted && kinshipResult.maternalKinship.hasMaternalRelation) {
       spoken += ` ومن جهة الأم والأخوال: ${kinshipResult.maternalKinship.maternalExplanation}`;
     }
-    if (kinshipResult.inLawKinship.hasInLawRelation) {
+    if (!isPrivacyRestricted && kinshipResult.inLawKinship.hasInLawRelation) {
       spoken += ` ومن جهة المصاهرة: ${kinshipResult.inLawKinship.spousalExplanation || kinshipResult.inLawKinship.spousalTitle}.`;
     }
 
@@ -291,7 +293,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <p className="text-[11px] text-emerald-800 mt-0.5">
                       الجيل {personA.generation} · {personA.branchName || 'فرع العائلة'}
                     </p>
-                    {personA.mother && (
+                    {!isPrivacyRestricted && personA.mother && (
                       <p className="text-[10px] text-rose-800 truncate mt-0.5">
                         الوالدة: {personA.mother.name} ({personA.mother.isFromFamily ? 'آل فردان' : personA.mother.familyOrigin || 'خارج العائلة'})
                       </p>
@@ -446,7 +448,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <p className="text-[11px] text-amber-800 mt-0.5">
                       الجيل {personB.generation} · {personB.branchName || 'فرع العائلة'}
                     </p>
-                    {personB.mother && (
+                    {!isPrivacyRestricted && personB.mother && (
                       <p className="text-[10px] text-rose-800 truncate mt-0.5">
                         الوالدة: {personB.mother.name} ({personB.mother.isFromFamily ? 'آل فردان' : personB.mother.familyOrigin || 'خارج العائلة'})
                       </p>
@@ -580,13 +582,13 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                         فرعان أبويان مختلفان
                       </span>
                     )}
-                    {kinshipResult.maternalKinship.hasMaternalRelation && (
+                    {!isPrivacyRestricted && kinshipResult.maternalKinship.hasMaternalRelation && (
                       <span className="px-2.5 py-0.5 bg-rose-100 text-rose-900 rounded-full text-[11px] font-semibold flex items-center gap-1">
                         <Heart className="w-3 h-3 text-rose-600 fill-rose-600" />
                         <span>قرابة أرحام (أخوال)</span>
                       </span>
                     )}
-                    {kinshipResult.inLawKinship.hasInLawRelation && (
+                    {!isPrivacyRestricted && kinshipResult.inLawKinship.hasInLawRelation && (
                       <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 rounded-full text-[11px] font-semibold flex items-center gap-1">
                         <Sparkles className="w-3 h-3 text-amber-600" />
                         <span>صلة مصاهرة</span>
@@ -680,35 +682,39 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                 <span>النسب من جهة الأب (العصبة)</span>
               </button>
 
-              <button
-                onClick={() => setActivePerspective('maternal')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activePerspective === 'maternal'
-                    ? 'bg-rose-800 text-white shadow-xs'
-                    : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
-                }`}
-              >
-                <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-                <span>النسب من جهة الأم (الأخوال)</span>
-                {kinshipResult.maternalKinship.hasMaternalRelation && (
-                  <span className="w-2 h-2 rounded-full bg-rose-500" />
-                )}
-              </button>
+              {!isPrivacyRestricted && (
+                <>
+                  <button
+                    onClick={() => setActivePerspective('maternal')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      activePerspective === 'maternal'
+                        ? 'bg-rose-800 text-white shadow-xs'
+                        : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
+                    }`}
+                  >
+                    <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                    <span>النسب من جهة الأم (الأخوال)</span>
+                    {kinshipResult.maternalKinship.hasMaternalRelation && (
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                    )}
+                  </button>
 
-              <button
-                onClick={() => setActivePerspective('inlaw')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activePerspective === 'inlaw'
-                    ? 'bg-amber-800 text-white shadow-xs'
-                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
-                }`}
-              >
-                <Award className="w-3.5 h-3.5 text-amber-600" />
-                <span>صلة المصاهرة ونسب الزوجة</span>
-                {kinshipResult.inLawKinship.hasInLawRelation && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                )}
-              </button>
+                  <button
+                    onClick={() => setActivePerspective('inlaw')}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      activePerspective === 'inlaw'
+                        ? 'bg-amber-800 text-white shadow-xs'
+                        : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
+                    }`}
+                  >
+                    <Award className="w-3.5 h-3.5 text-amber-600" />
+                    <span>صلة المصاهرة ونسب الزوجة</span>
+                    {kinshipResult.inLawKinship.hasInLawRelation && (
+                      <span className="w-2 h-2 rounded-full bg-amber-500" />
+                    )}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* ========================================================================= */}
@@ -878,7 +884,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
             {/* ========================================================================= */}
             {/* 2. MATERNAL KINSHIP SECTION (النسب من جهة الأم) */}
             {/* ========================================================================= */}
-            {(activePerspective === 'all' || activePerspective === 'maternal') && (
+            {!isPrivacyRestricted && (activePerspective === 'all' || activePerspective === 'maternal') && (
               <div className="space-y-4 pt-4 border-t border-slate-200/90">
                 <div className="flex items-center gap-2 border-r-4 border-rose-600 pr-3">
                   <Heart className="w-5 h-5 text-rose-600 fill-rose-100" />
@@ -1034,7 +1040,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
             {/* ========================================================================= */}
             {/* 3. IN-LAW & SPOUSAL SECTION (المصاهرة ونسب الزوجة) */}
             {/* ========================================================================= */}
-            {(activePerspective === 'all' || activePerspective === 'inlaw') && (
+            {!isPrivacyRestricted && (activePerspective === 'all' || activePerspective === 'inlaw') && (
               <div className="space-y-4 pt-4 border-t border-slate-200/90">
                 <div className="flex items-center gap-2 border-r-4 border-amber-600 pr-3">
                   <Award className="w-5 h-5 text-amber-600" />

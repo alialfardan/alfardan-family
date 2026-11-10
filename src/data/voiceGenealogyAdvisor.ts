@@ -288,7 +288,8 @@ function cleanNameSegment(raw: string): string {
  */
 export function matchPersonFromText(
   rawSegment: string,
-  people: Map<string, ProcessedPerson>
+  people: Map<string, ProcessedPerson>,
+  excludeFemales: boolean = false
 ): { best: ProcessedPerson | null; alternatives: ProcessedPerson[] } {
   const cleaned = cleanNameSegment(rawSegment);
   const normQuery = normalizeArabic(cleaned);
@@ -305,6 +306,7 @@ export function matchPersonFromText(
 
   for (const person of people.values()) {
     if (person.deleted) continue;
+    if (excludeFemales && person.gender === 'f') continue;
 
     const normName = normalizeArabic(person.name);
     const fullChain = getAncestorsPath(person.key, people).map(p => normalizeArabic(p.name));
@@ -377,7 +379,8 @@ export function formatDeepProfileResponse(
   query: string,
   profile: PersonDeepProfile,
   people: Map<string, ProcessedPerson>,
-  alternatives: ProcessedPerson[] = []
+  alternatives: ProcessedPerson[] = [],
+  isPrivacyRestricted: boolean = false
 ): AdvisorResponse {
   const { person } = profile;
   const isMale = person.gender === 'm';
@@ -394,54 +397,56 @@ export function formatDeepProfileResponse(
     tone: 'emerald'
   });
 
-  // 2. الوالدة والجدات (للأب وللأم)
-  const grandmothersLines: string[] = [];
-  if (profile.motherInfo) {
-    const motherOriginText = profile.motherPerson
-      ? `من ذرية عائلة الفردان (${formatLineageString(profile.motherPerson.key, people)})`
-      : profile.motherInfo.isFromFamily
-      ? 'من كرائم عائلة الفردان'
-      : profile.motherInfo.familyOrigin
-      ? `من عائلة «${profile.motherInfo.familyOrigin}» الكريمة`
-      : 'موثقة في سجل الأمهات';
-    grandmothersLines.push(`• الوالدة الكريمة: «${profile.motherInfo.name}» (${motherOriginText}).`);
-  } else {
-    grandmothersLines.push(`• الوالدة الكريمة: لم يُدرج اسم الوالدة تفصيلاً في البطاقة الحالية بعد.`);
-  }
-
-  if (profile.paternalGrandmotherInfo) {
-    const patGmLineage = profile.paternalGrandmotherPerson
-      ? ` (${getQuadLineageName(profile.paternalGrandmotherPerson.key, people, 4)})`
-      : profile.paternalGrandmotherInfo.familyOrigin
-      ? ` (من عائلة ${profile.paternalGrandmotherInfo.familyOrigin})`
-      : '';
-    grandmothersLines.push(`• الجدة لأب (والدة الأب «${profile.father?.name || ''}»): السيدة «${profile.paternalGrandmotherInfo.name}»${patGmLineage}.`);
-  } else if (profile.father) {
-    grandmothersLines.push(`• الجدة لأب (والدة الأب «${profile.father.name}»): غير مسجلة حالياً في بطاقة الوالد.`);
-  }
-
-  if (profile.maternalGrandfather || profile.maternalGrandmotherInfo) {
-    if (profile.maternalGrandfather) {
-      grandmothersLines.push(
-        `• الجد لأم (والد الوالدة): «${getQuadLineageName(profile.maternalGrandfather.key, people, 4)}».`
-      );
+  // 2. الوالدة والجدات (للأب وللأم) — مخفي في وضع الزوار العام
+  if (!isPrivacyRestricted) {
+    const grandmothersLines: string[] = [];
+    if (profile.motherInfo) {
+      const motherOriginText = profile.motherPerson
+        ? `من ذرية عائلة الفردان (${formatLineageString(profile.motherPerson.key, people)})`
+        : profile.motherInfo.isFromFamily
+        ? 'من كرائم عائلة الفردان'
+        : profile.motherInfo.familyOrigin
+        ? `من عائلة «${profile.motherInfo.familyOrigin}» الكريمة`
+        : 'موثقة في سجل الأمهات';
+      grandmothersLines.push(`• الوالدة الكريمة: «${profile.motherInfo.name}» (${motherOriginText}).`);
+    } else {
+      grandmothersLines.push(`• الوالدة الكريمة: لم يُدرج اسم الوالدة تفصيلاً في البطاقة الحالية بعد.`);
     }
-    if (profile.maternalGrandmotherInfo) {
-      const matGmLineage = profile.maternalGrandmotherPerson
-        ? ` (${getQuadLineageName(profile.maternalGrandmotherPerson.key, people, 4)})`
-        : profile.maternalGrandmotherInfo.familyOrigin
-        ? ` (من عائلة ${profile.maternalGrandmotherInfo.familyOrigin})`
+
+    if (profile.paternalGrandmotherInfo) {
+      const patGmLineage = profile.paternalGrandmotherPerson
+        ? ` (${getQuadLineageName(profile.paternalGrandmotherPerson.key, people, 4)})`
+        : profile.paternalGrandmotherInfo.familyOrigin
+        ? ` (من عائلة ${profile.paternalGrandmotherInfo.familyOrigin})`
         : '';
-      grandmothersLines.push(`• الجدة لأم (والدة الأم): السيدة «${profile.maternalGrandmotherInfo.name}»${matGmLineage}.`);
+      grandmothersLines.push(`• الجدة لأب (والدة الأب «${profile.father?.name || ''}»): السيدة «${profile.paternalGrandmotherInfo.name}»${patGmLineage}.`);
+    } else if (profile.father) {
+      grandmothersLines.push(`• الجدة لأب (والدة الأب «${profile.father.name}»): غير مسجلة حالياً في بطاقة الوالد.`);
     }
-  }
 
-  sections.push({
-    heading: '٢. الوالدة والجدات (للأب وللأم)',
-    content: grandmothersLines.join('\n'),
-    badge: 'الأمهات والجدات',
-    tone: 'rose'
-  });
+    if (profile.maternalGrandfather || profile.maternalGrandmotherInfo) {
+      if (profile.maternalGrandfather) {
+        grandmothersLines.push(
+          `• الجد لأم (والد الوالدة): «${getQuadLineageName(profile.maternalGrandfather.key, people, 4)}».`
+        );
+      }
+      if (profile.maternalGrandmotherInfo) {
+        const matGmLineage = profile.maternalGrandmotherPerson
+          ? ` (${getQuadLineageName(profile.maternalGrandmotherPerson.key, people, 4)})`
+          : profile.maternalGrandmotherInfo.familyOrigin
+          ? ` (من عائلة ${profile.maternalGrandmotherInfo.familyOrigin})`
+          : '';
+        grandmothersLines.push(`• الجدة لأم (والدة الأم): السيدة «${profile.maternalGrandmotherInfo.name}»${matGmLineage}.`);
+      }
+    }
+
+    sections.push({
+      heading: '٢. الوالدة والجدات (للأب وللأم)',
+      content: grandmothersLines.join('\n'),
+      badge: 'الأمهات والجدات',
+      tone: 'rose'
+    });
+  }
 
   // 3. الأعمام والعمات (إخوة وأخوات الأب)
   const paternalRelativesLines: string[] = [];
@@ -453,80 +458,88 @@ export function formatDeepProfileResponse(
     paternalRelativesLines.push(`• الأعمام: لا يوجد أعمام ذكور مسجلون غير الوالد.`);
   }
 
-  if (profile.paternalAunts.length > 0) {
-    paternalRelativesLines.push(
-      `• العمات (${profile.paternalAunts.length}): ${profile.paternalAunts.map(a => `«${a.name}»`).join('، ')}.`
-    );
-  } else {
-    paternalRelativesLines.push(`• العمات: لا توجد عمات مسجلات في نفس الفرع المباشر.`);
+  if (!isPrivacyRestricted) {
+    if (profile.paternalAunts.length > 0) {
+      paternalRelativesLines.push(
+        `• العمات (${profile.paternalAunts.length}): ${profile.paternalAunts.map(a => `«${a.name}»`).join('، ')}.`
+      );
+    } else {
+      paternalRelativesLines.push(`• العمات: لا توجد عمات مسجلات في نفس الفرع المباشر.`);
+    }
   }
 
   sections.push({
-    heading: '٣. الأعمام والعمات (إخوة وأخوات الأب)',
+    heading: isPrivacyRestricted ? '٢. الأعمام (إخوة الأب)' : '٣. الأعمام والعمات (إخوة وأخوات الأب)',
     content: paternalRelativesLines.join('\n'),
-    badge: `${profile.paternalUncles.length} أعمام · ${profile.paternalAunts.length} عمات`,
+    badge: isPrivacyRestricted
+      ? `${profile.paternalUncles.length} أعمام`
+      : `${profile.paternalUncles.length} أعمام · ${profile.paternalAunts.length} عمات`,
     tone: 'amber'
   });
 
-  // 4. الأخوال والخالات (إخوة وأخوات الأم)
-  const maternalRelativesLines: string[] = [];
-  if (profile.motherPerson) {
-    if (profile.maternalUncles.length > 0) {
+  // 4. الأخوال والخالات (إخوة وأخوات الأم) — مخفي في وضع الزوار العام
+  if (!isPrivacyRestricted) {
+    const maternalRelativesLines: string[] = [];
+    if (profile.motherPerson) {
+      if (profile.maternalUncles.length > 0) {
+        maternalRelativesLines.push(
+          `• الأخوال المباشرون (${profile.maternalUncles.length}): ${profile.maternalUncles.map(u => `«${u.name}»`).join('، ')} (أبناء الجد لأم «${profile.maternalGrandfather?.name || ''}»).`
+        );
+      } else {
+        maternalRelativesLines.push(`• الأخوال: لا يوجد أشقاء ذكور مسجلون للوالدة «${profile.motherPerson.name}».`);
+      }
+      if (profile.maternalAunts.length > 0) {
+        maternalRelativesLines.push(
+          `• الخالات المباشرات (${profile.maternalAunts.length}): ${profile.maternalAunts.map(a => `«${a.name}»`).join('، ')}.`
+        );
+      } else {
+        maternalRelativesLines.push(`• الخالات: لا توجد شقيقات مسجلات للوالدة «${profile.motherPerson.name}».`);
+      }
+    } else if (profile.motherInfo?.familyOrigin) {
       maternalRelativesLines.push(
-        `• الأخوال المباشرون (${profile.maternalUncles.length}): ${profile.maternalUncles.map(u => `«${u.name}»`).join('، ')} (أبناء الجد لأم «${profile.maternalGrandfather?.name || ''}»).`
+        `• الأخوال والخالات: من عائلة «${profile.motherInfo.familyOrigin}» الكريمة (خارج المشجر المباشر لعائلة الفردان).`
       );
     } else {
-      maternalRelativesLines.push(`• الأخوال: لا يوجد أشقاء ذكور مسجلون للوالدة «${profile.motherPerson.name}».`);
-    }
-    if (profile.maternalAunts.length > 0) {
       maternalRelativesLines.push(
-        `• الخالات المباشرات (${profile.maternalAunts.length}): ${profile.maternalAunts.map(a => `«${a.name}»`).join('، ')}.`
+        `• الأخوال والخالات: يتطلب عرض أسماء الأخوال والخالات توثيق ارتباط الوالدة في سجل الأمهات.`
       );
-    } else {
-      maternalRelativesLines.push(`• الخالات: لا توجد شقيقات مسجلات للوالدة «${profile.motherPerson.name}».`);
     }
-  } else if (profile.motherInfo?.familyOrigin) {
-    maternalRelativesLines.push(
-      `• الأخوال والخالات: من عائلة «${profile.motherInfo.familyOrigin}» الكريمة (خارج المشجر المباشر لعائلة الفردان).`
-    );
-  } else {
-    maternalRelativesLines.push(
-      `• الأخوال والخالات: يتطلب عرض أسماء الأخوال والخالات توثيق ارتباط الوالدة في سجل الأمهات.`
-    );
-  }
 
-  sections.push({
-    heading: '٤. الأخوال والخالات (قرابة جهة الأم)',
-    content: maternalRelativesLines.join('\n'),
-    badge: profile.motherPerson ? `${profile.maternalUncles.length} أخوال · ${profile.maternalAunts.length} خالات` : 'جهة الأم',
-    tone: 'indigo'
-  });
+    sections.push({
+      heading: '٤. الأخوال والخالات (قرابة جهة الأم)',
+      content: maternalRelativesLines.join('\n'),
+      badge: profile.motherPerson ? `${profile.maternalUncles.length} أخوال · ${profile.maternalAunts.length} خالات` : 'جهة الأم',
+      tone: 'indigo'
+    });
+  }
 
   // 5. الإخوة والأخوات، المصاهرات، والأبناء
   const familyUnitLines: string[] = [];
-  if (profile.brothers.length > 0 || profile.sisters.length > 0) {
+  if (profile.brothers.length > 0 || (!isPrivacyRestricted && profile.sisters.length > 0)) {
     if (profile.brothers.length > 0) {
       familyUnitLines.push(`• الإخوة (${profile.brothers.length}): ${profile.brothers.map(b => `«${b.name}»`).join('، ')}.`);
     }
-    if (profile.sisters.length > 0) {
+    if (!isPrivacyRestricted && profile.sisters.length > 0) {
       familyUnitLines.push(`• الأخوات (${profile.sisters.length}): ${profile.sisters.map(s => `«${s.name}»`).join('، ')}.`);
     }
   } else {
-    familyUnitLines.push(`• الإخوة والأخوات: لا يوجد إخوة أو أخوات مسجلون.`);
+    familyUnitLines.push(`• الإخوة: لا يوجد إخوة مسجلون.`);
   }
 
-  if (profile.spouses.length > 0) {
-    const spouseDescriptions = profile.spouses.map(sp => {
-      if (sp.isFromFamily && sp.personKey && people.has(sp.personKey)) {
-        return `«${getQuadLineageName(sp.personKey, people, 4)}» (من عائلة الفردان)`;
-      }
-      return `«${sp.name}»${sp.familyOrigin ? ` (من عائلة ${sp.familyOrigin})` : ''}`;
-    });
-    familyUnitLines.push(`• المصاهرة والزواج: اقترن بـ ${spouseDescriptions.join('، و')}.`);
-  } else if (profile.husbandsFromTree.length > 0) {
-    familyUnitLines.push(
-      `• المصاهرة والزواج: مقترنة بـ ${profile.husbandsFromTree.map(h => `«${getQuadLineageName(h.key, people, 4)}»`).join('، و')}.`
-    );
+  if (!isPrivacyRestricted) {
+    if (profile.spouses.length > 0) {
+      const spouseDescriptions = profile.spouses.map(sp => {
+        if (sp.isFromFamily && sp.personKey && people.has(sp.personKey)) {
+          return `«${getQuadLineageName(sp.personKey, people, 4)}» (من عائلة الفردان)`;
+        }
+        return `«${sp.name}»${sp.familyOrigin ? ` (من عائلة ${sp.familyOrigin})` : ''}`;
+      });
+      familyUnitLines.push(`• المصاهرة والزواج: اقترن بـ ${spouseDescriptions.join('، و')}.`);
+    } else if (profile.husbandsFromTree.length > 0) {
+      familyUnitLines.push(
+        `• المصاهرة والزواج: مقترنة بـ ${profile.husbandsFromTree.map(h => `«${getQuadLineageName(h.key, people, 4)}»`).join('، و')}.`
+      );
+    }
   }
 
   if (profile.sons.length > 0 || profile.daughters.length > 0) {
@@ -534,7 +547,12 @@ export function formatDeepProfileResponse(
       familyUnitLines.push(`• الأبناء الذكور (${profile.sons.length}): ${profile.sons.map(s => `«${s.name}»`).join('، ')}.`);
     }
     if (profile.daughters.length > 0) {
-      familyUnitLines.push(`• البنات (${profile.daughters.length}): ${profile.daughters.map(d => `«${d.name}»`).join('، ')}.`);
+      if (isPrivacyRestricted) {
+        const dCountText = profile.daughters.length === 1 ? 'بنت واحدة' : profile.daughters.length === 2 ? 'بنتان' : `${profile.daughters.length} بنات`;
+        familyUnitLines.push(`• البنات: ${dCountText}.`);
+      } else {
+        familyUnitLines.push(`• البنات (${profile.daughters.length}): ${profile.daughters.map(d => `«${d.name}»`).join('، ')}.`);
+      }
     }
     if (profile.totalDescendantsCount > profile.sons.length + profile.daughters.length) {
       familyUnitLines.push(`• إجمالي الذرية والأحفاد المسجلين في الشجرة: ${profile.totalDescendantsCount} فرداً.`);
@@ -544,7 +562,7 @@ export function formatDeepProfileResponse(
   }
 
   sections.push({
-    heading: '٥. الإخوة، المصاهرات، والأبناء والذرية',
+    heading: isPrivacyRestricted ? '٣. الإخوة والأبناء والذرية' : '٥. الإخوة، المصاهرات، والأبناء والذرية',
     content: familyUnitLines.join('\n'),
     badge: `${profile.sons.length + profile.daughters.length} أبناء مباشرين`,
     tone: 'slate'
@@ -555,7 +573,7 @@ export function formatDeepProfileResponse(
     `تحليل النسب الكامل لـ ${person.name}.`,
     `عمود النسب: ${isMale ? 'هو' : 'هي'} ${profile.fullLineageText}، في ${genOrdinal}.`
   ];
-  if (profile.motherInfo) {
+  if (!isPrivacyRestricted && profile.motherInfo) {
     spokenParts.push(
       `والدته الكريمة هي ${profile.motherInfo.name}${
         profile.motherPerson
@@ -566,25 +584,25 @@ export function formatDeepProfileResponse(
       }.`
     );
   }
-  if (profile.paternalGrandmotherInfo) {
+  if (!isPrivacyRestricted && profile.paternalGrandmotherInfo) {
     spokenParts.push(`وجدته لأبيه هي السيدة ${profile.paternalGrandmotherInfo.name}.`);
   }
-  if (profile.maternalGrandmotherInfo) {
+  if (!isPrivacyRestricted && profile.maternalGrandmotherInfo) {
     spokenParts.push(`وجدته لأمه هي السيدة ${profile.maternalGrandmotherInfo.name}.`);
   }
   if (profile.paternalUncles.length > 0) {
     spokenParts.push(`أما أعمامه فعددهم ${profile.paternalUncles.length}، وهم: ${profile.paternalUncles.map(u => u.name).join('، و')}.`);
   }
-  if (profile.paternalAunts.length > 0) {
+  if (!isPrivacyRestricted && profile.paternalAunts.length > 0) {
     spokenParts.push(`وعماته عددُهن ${profile.paternalAunts.length}، وهن: ${profile.paternalAunts.map(a => a.name).join('، و')}.`);
   }
-  if (profile.maternalUncles.length > 0) {
+  if (!isPrivacyRestricted && profile.maternalUncles.length > 0) {
     spokenParts.push(`وأخواله المباشرون عددهم ${profile.maternalUncles.length}، وهم: ${profile.maternalUncles.map(u => u.name).join('، و')}.`);
   }
-  if (profile.maternalAunts.length > 0) {
+  if (!isPrivacyRestricted && profile.maternalAunts.length > 0) {
     spokenParts.push(`وخالاته عددُهن ${profile.maternalAunts.length}، وهن: ${profile.maternalAunts.map(a => a.name).join('، و')}.`);
   }
-  if (profile.spouses.length > 0) {
+  if (!isPrivacyRestricted && profile.spouses.length > 0) {
     spokenParts.push(`وفي سجل المصاهرة والزواج: اقترن بـ ${profile.spouses.map(s => s.name).join('، و')}.`);
   }
   if (profile.sons.length + profile.daughters.length > 0) {
@@ -612,7 +630,8 @@ export function formatTwoPersonKinshipResponse(
   personA: ProcessedPerson,
   personB: ProcessedPerson,
   people: Map<string, ProcessedPerson>,
-  alternatives: ProcessedPerson[] = []
+  alternatives: ProcessedPerson[] = [],
+  isPrivacyRestricted: boolean = false
 ): AdvisorResponse {
   const kinship = analyzeKinship(personA.key, personB.key, people);
   const profileA = buildPersonDeepProfile(personA.key, people);
@@ -660,60 +679,63 @@ export function formatTwoPersonKinshipResponse(
     tone: 'amber'
   });
 
-  // 3. صلة القرابة من جهة الأمهات والجدات والأخوال
-  const maternalLines: string[] = [];
-  if (kinship.maternalKinship.hasMaternalRelation) {
-    maternalLines.push(`• قرابة الأرحام والأخوال المشتركة: ${kinship.maternalKinship.maternalTitle} — ${kinship.maternalKinship.maternalExplanation}`);
-  }
-  if (profileA?.motherInfo) {
-    maternalLines.push(
-      `• والدة «${personA.name}»: السيدة «${profileA.motherInfo.name}»${
-        profileA.paternalGrandmotherInfo ? `، وجدته لأبيه: «${profileA.paternalGrandmotherInfo.name}»` : ''
-      }.`
-    );
-  }
-  if (profileB?.motherInfo) {
-    maternalLines.push(
-      `• والدة «${personB.name}»: السيدة «${profileB.motherInfo.name}»${
-        profileB.paternalGrandmotherInfo ? `، وجدته لأبيه: «${profileB.paternalGrandmotherInfo.name}»` : ''
-      }.`
-    );
-  }
-  if (maternalLines.length === 0) {
-    maternalLines.push('• لا توجد قرابة مباشرة إضافية مسجلة من جهة الأمهات بين الطرفين بخلاف قرابة العصبة الأبوية.');
-  }
-
-  sections.push({
-    heading: '٣. القرابة من جهة الأمهات والجدات والأخوال',
-    content: maternalLines.join('\n'),
-    badge: kinship.maternalKinship.hasMaternalRelation ? kinship.maternalKinship.maternalTitle : 'الأمهات والجدات',
-    tone: 'rose'
-  });
-
-  // 4. صلة المصاهرة والزواج
-  const inLawLines: string[] = [];
-  if (kinship.inLawKinship.hasInLawRelation) {
-    inLawLines.push(`• رابطة المصاهرة المباشرة: ${kinship.inLawKinship.spousalTitle} — ${kinship.inLawKinship.spousalExplanation}`);
-    for (const item of kinship.inLawKinship.inLawsA) {
-      if (item.explanation !== kinship.inLawKinship.spousalExplanation) {
-        inLawLines.push(`• ${item.explanation}`);
-      }
+  // 3 & 4: الأمهات والمصاهرة — مخفية في وضع الزوار العام
+  if (!isPrivacyRestricted) {
+    // 3. صلة القرابة من جهة الأمهات والجدات والأخوال
+    const maternalLines: string[] = [];
+    if (kinship.maternalKinship.hasMaternalRelation) {
+      maternalLines.push(`• قرابة الأرحام والأخوال المشتركة: ${kinship.maternalKinship.maternalTitle} — ${kinship.maternalKinship.maternalExplanation}`);
     }
-    for (const item of kinship.inLawKinship.inLawsB) {
-      if (item.explanation !== kinship.inLawKinship.spousalExplanation) {
-        inLawLines.push(`• ${item.explanation}`);
-      }
+    if (profileA?.motherInfo) {
+      maternalLines.push(
+        `• والدة «${personA.name}»: السيدة «${profileA.motherInfo.name}»${
+          profileA.paternalGrandmotherInfo ? `، وجدته لأبيه: «${profileA.paternalGrandmotherInfo.name}»` : ''
+        }.`
+      );
     }
-  } else {
-    inLawLines.push('• لا توجد رابطة مصاهرة مباشرة مسجلة بين الفردين، وتجمعهما رابطة الدم والنسب الأصيل في الشجرة.');
-  }
+    if (profileB?.motherInfo) {
+      maternalLines.push(
+        `• والدة «${personB.name}»: السيدة «${profileB.motherInfo.name}»${
+          profileB.paternalGrandmotherInfo ? `، وجدته لأبيه: «${profileB.paternalGrandmotherInfo.name}»` : ''
+        }.`
+      );
+    }
+    if (maternalLines.length === 0) {
+      maternalLines.push('• لا توجد قرابة مباشرة إضافية مسجلة من جهة الأمهات بين الطرفين بخلاف قرابة العصبة الأبوية.');
+    }
 
-  sections.push({
-    heading: '٤. روابط المصاهرة والزواج',
-    content: inLawLines.join('\n'),
-    badge: kinship.inLawKinship.hasInLawRelation ? kinship.inLawKinship.spousalTitle : 'المصاهرة',
-    tone: 'indigo'
-  });
+    sections.push({
+      heading: '٣. القرابة من جهة الأمهات والجدات والأخوال',
+      content: maternalLines.join('\n'),
+      badge: kinship.maternalKinship.hasMaternalRelation ? kinship.maternalKinship.maternalTitle : 'الأمهات والجدات',
+      tone: 'rose'
+    });
+
+    // 4. صلة المصاهرة والزواج
+    const inLawLines: string[] = [];
+    if (kinship.inLawKinship.hasInLawRelation) {
+      inLawLines.push(`• رابطة المصاهرة المباشرة: ${kinship.inLawKinship.spousalTitle} — ${kinship.inLawKinship.spousalExplanation}`);
+      for (const item of kinship.inLawKinship.inLawsA) {
+        if (item.explanation !== kinship.inLawKinship.spousalExplanation) {
+          inLawLines.push(`• ${item.explanation}`);
+        }
+      }
+      for (const item of kinship.inLawKinship.inLawsB) {
+        if (item.explanation !== kinship.inLawKinship.spousalExplanation) {
+          inLawLines.push(`• ${item.explanation}`);
+        }
+      }
+    } else {
+      inLawLines.push('• لا توجد رابطة مصاهرة مباشرة مسجلة بين الفردين، وتجمعهما رابطة الدم والنسب الأصيل في الشجرة.');
+    }
+
+    sections.push({
+      heading: '٤. روابط المصاهرة والزواج',
+      content: inLawLines.join('\n'),
+      badge: kinship.inLawKinship.hasInLawRelation ? kinship.inLawKinship.spousalTitle : 'المصاهرة',
+      tone: 'indigo'
+    });
+  }
 
   // Spoken Arabic summary
   const spokenParts: string[] = [
@@ -723,10 +745,10 @@ export function formatTwoPersonKinshipResponse(
     `أما من حيث عمود النسب الكامل: فإن الطرف الأول هو ${formatLineageString(personA.key, people)}.`,
     `والطرف الثاني هو ${formatLineageString(personB.key, people)}.`
   ];
-  if (kinship.maternalKinship.hasMaternalRelation) {
+  if (!isPrivacyRestricted && kinship.maternalKinship.hasMaternalRelation) {
     spokenParts.push(`ومن جهة الأمهات والأخوال: ${kinship.maternalKinship.maternalExplanation}`);
   }
-  if (kinship.inLawKinship.hasInLawRelation) {
+  if (!isPrivacyRestricted && kinship.inLawKinship.hasInLawRelation) {
     spokenParts.push(`ومن جهة المصاهرة: ${kinship.inLawKinship.spousalExplanation}`);
   }
 
@@ -750,7 +772,8 @@ export function askGenealogyAdvisor(
   rawQuery: string,
   registry: FamilyTreeProcessed,
   explicitPersonAKey?: string,
-  explicitPersonBKey?: string
+  explicitPersonBKey?: string,
+  isPrivacyRestricted: boolean = false
 ): AdvisorResponse {
   const query = rawQuery.trim();
   const people = registry.people;
@@ -759,18 +782,20 @@ export function askGenealogyAdvisor(
   if (explicitPersonAKey && explicitPersonBKey) {
     const pA = people.get(explicitPersonAKey);
     const pB = people.get(explicitPersonBKey);
-    if (pA && pB) {
+    if (pA && pB && !(isPrivacyRestricted && (pA.gender === 'f' || pB.gender === 'f'))) {
       return formatTwoPersonKinshipResponse(
         query || `ما صلة القرابة بين ${pA.name} و ${pB.name}؟`,
         pA,
         pB,
-        people
+        people,
+        [],
+        isPrivacyRestricted
       );
     }
   } else if (explicitPersonAKey && !explicitPersonBKey && !query) {
     const profile = buildPersonDeepProfile(explicitPersonAKey, people);
-    if (profile) {
-      return formatDeepProfileResponse(`تحليل نسب وقرابات ${profile.person.name}`, profile, people);
+    if (profile && !(isPrivacyRestricted && profile.person.gender === 'f')) {
+      return formatDeepProfileResponse(`تحليل نسب وقرابات ${profile.person.name}`, profile, people, [], isPrivacyRestricted);
     }
   }
 
@@ -795,11 +820,11 @@ export function askGenealogyAdvisor(
   }
 
   if (candidateSegA && candidateSegB) {
-    const matchA = matchPersonFromText(candidateSegA, people);
-    const matchB = matchPersonFromText(candidateSegB, people);
+    const matchA = matchPersonFromText(candidateSegA, people, isPrivacyRestricted);
+    const matchB = matchPersonFromText(candidateSegB, people, isPrivacyRestricted);
     if (matchA.best && matchB.best) {
       const combinedAlts = [...matchA.alternatives.slice(0, 3), ...matchB.alternatives.slice(0, 3)];
-      return formatTwoPersonKinshipResponse(query, matchA.best, matchB.best, people, combinedAlts);
+      return formatTwoPersonKinshipResponse(query, matchA.best, matchB.best, people, combinedAlts, isPrivacyRestricted);
     }
   }
 
@@ -833,11 +858,11 @@ export function askGenealogyAdvisor(
   }
 
   // 4. Single Person Deep Profile Analysis (Lineage, Grandmothers, Uncles, Maternal Uncles, Spouses, Children)
-  const singleMatch = matchPersonFromText(query, people);
+  const singleMatch = matchPersonFromText(query, people, isPrivacyRestricted);
   if (singleMatch.best) {
     const profile = buildPersonDeepProfile(singleMatch.best.key, people);
     if (profile) {
-      return formatDeepProfileResponse(query, profile, people, singleMatch.alternatives);
+      return formatDeepProfileResponse(query, profile, people, singleMatch.alternatives, isPrivacyRestricted);
     }
   }
 

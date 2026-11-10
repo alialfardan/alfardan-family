@@ -67,6 +67,7 @@ export function subscribeToFamilyState(
             archivalPhotos: Array.isArray(data.archivalPhotos) ? data.archivalPhotos : undefined,
             notableFigures: Array.isArray(data.notableFigures) ? resolveNotableFigures(data.notableFigures) : undefined,
             contactInfo: data.contactInfo ? resolveContactInfo(data.contactInfo) : undefined,
+            privacyModeEnabled: typeof data.privacyModeEnabled === 'boolean' ? data.privacyModeEnabled : undefined,
             updatedAt: typeof data.updatedAt === 'number' ? normalizeTimestamp(data.updatedAt) : undefined
           });
         }
@@ -467,6 +468,7 @@ export async function syncFamilyStateToCloud(state: FamilyState): Promise<void> 
           archivalPhotos: compactArchivalPhotos,
           notableFigures: compactNotableFigures,
           contactInfo: safeContact,
+          privacyModeEnabled: typeof targetState.privacyModeEnabled === 'boolean' ? targetState.privacyModeEnabled : true,
           updatedAt: normalizeTimestamp(targetState.updatedAt) || normalizeTimestamp(Date.now())
         });
 

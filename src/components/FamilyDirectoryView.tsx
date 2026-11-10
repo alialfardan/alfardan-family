@@ -12,6 +12,7 @@ interface FamilyDirectoryViewProps {
   onOpenEditModal?: (personKey: string) => void;
   onDeletePerson?: (personKey: string) => void;
   isAuthorized?: boolean;
+  isPrivacyRestricted?: boolean;
   onOpenSearchResults?: (query: string) => void;
 }
 
@@ -25,6 +26,7 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
   onOpenEditModal,
   onDeletePerson,
   isAuthorized = false,
+  isPrivacyRestricted = false,
   onOpenSearchResults,
 }) => {
   const [query, setQuery] = useState('');
@@ -45,8 +47,8 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
   // Autocomplete suggestions when typing
   const autocompleteSuggestions = useMemo(() => {
     if (!query.trim()) return [];
-    return searchFamilyMembers(query, registry.people, 12);
-  }, [query, registry]);
+    return searchFamilyMembers(query, registry.people, 12, { excludeFemales: isPrivacyRestricted });
+  }, [query, registry, isPrivacyRestricted]);
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedGender, setSelectedGender] = useState<'all' | 'm' | 'f'>('all');
   const [selectedGen, setSelectedGen] = useState<string>('all');
@@ -63,6 +65,7 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
 
     registry.people.forEach((p: ProcessedPerson) => {
       if (p.deleted) return;
+      if (isPrivacyRestricted && p.gender === 'f') return;
 
       // Filter branch
       if (selectedBranch !== 'all' && p.branch !== selectedBranch) return;
@@ -112,7 +115,7 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
     });
 
     return list;
-  }, [registry, query, selectedBranch, selectedGender, selectedGen, onlyWithPhotos, onlyNew, sortField, sortAsc]);
+  }, [registry, query, selectedBranch, selectedGender, selectedGen, onlyWithPhotos, onlyNew, sortField, sortAsc, isPrivacyRestricted]);
 
   // Available generations
   const generations = useMemo(() => {
@@ -305,13 +308,15 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
           <div>
             <label className="block text-[11px] font-bold text-slate-500 mb-1">الجنس</label>
             <select
-              value={selectedGender}
+              value={isPrivacyRestricted && selectedGender === 'f' ? 'all' : selectedGender}
               onChange={e => setSelectedGender(e.target.value as any)}
               className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none"
             >
-              <option value="all">الكل ({registry.stats.totalCount})</option>
+              <option value="all">الكل ({isPrivacyRestricted ? registry.stats.maleCount : registry.stats.totalCount})</option>
               <option value="m">الذكور ({registry.stats.maleCount})</option>
-              <option value="f">الإناث ({registry.stats.femaleCount})</option>
+              {!isPrivacyRestricted && (
+                <option value="f">الإناث ({registry.stats.femaleCount})</option>
+              )}
             </select>
           </div>
 

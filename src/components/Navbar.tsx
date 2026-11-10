@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActiveTab, FamilyTreeProcessed } from '../types/family';
 import {
   Plus,
@@ -9,11 +9,15 @@ import {
   Download,
   FileText,
   Lock,
+  Unlock,
   ShieldCheck,
   Award,
   UploadCloud,
   Phone,
-  Bell
+  Bell,
+  X,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -32,6 +36,11 @@ interface NavbarProps {
   isSavingForPublish?: boolean;
   isNotificationsGranted?: boolean;
   onEnableNotifications?: () => void;
+  privacyModeEnabled?: boolean;
+  onTogglePrivacyMode?: (enabled: boolean) => void;
+  isFamilyMember?: boolean;
+  onUnlockFamilyMode?: () => void;
+  onLockFamilyMode?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -50,7 +59,28 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSavingForPublish = false,
   isNotificationsGranted = false,
   onEnableNotifications,
+  privacyModeEnabled = true,
+  onTogglePrivacyMode,
+  isFamilyMember = false,
+  onUnlockFamilyMode,
+  onLockFamilyMode,
 }) => {
+  const [isFamilyPassModalOpen, setIsFamilyPassModalOpen] = useState(false);
+  const [familyPassInput, setFamilyPassInput] = useState('');
+  const [familyPassError, setFamilyPassError] = useState('');
+
+  const handleFamilyPassSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (familyPassInput.trim().toLowerCase() === 'alfardan2026') {
+      setFamilyPassError('');
+      setFamilyPassInput('');
+      setIsFamilyPassModalOpen(false);
+      onUnlockFamilyMode?.();
+    } else {
+      setFamilyPassError('كلمة المرور غير صحيحة، يرجى التأكد من كلمة مرور العائلة');
+    }
+  };
+
   return (
     <>
       {/* Top Navbar */}
@@ -90,8 +120,40 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            {/* Actions: Notification Toggle, Admin Controls & Visitor Login */}
-            <div className="flex items-center gap-1.5 sm:gap-2.5 justify-end flex-wrap sm:flex-nowrap">
+            {/* Actions: Notification Toggle, Family Mode Button, Admin Controls & Visitor Login */}
+            <div className="flex items-center gap-1.5 sm:gap-2 justify-end flex-wrap sm:flex-nowrap">
+              {/* Family Access Button (أنا من آل فردان 🔒 / وضع العائلة 🔓) - Shown ONLY when privacyModeEnabled is true */}
+              {privacyModeEnabled && (
+                isFamilyMember ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFamilyPassError('');
+                      setIsFamilyPassModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                    title="وضع العائلة مفعل حالياً — اضغط للقفل والعودة لوضع الزوار"
+                  >
+                    <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>وضع العائلة 🔓</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFamilyPassError('');
+                      setFamilyPassInput('');
+                      setIsFamilyPassModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 bg-gradient-to-r from-amber-50 to-emerald-50 hover:from-amber-100 hover:to-emerald-100 text-emerald-950 border border-amber-300/90 rounded-xl text-xs font-bold shadow-2xs transition-all cursor-pointer whitespace-nowrap active:scale-95"
+                    title="دخول أفراد عائلة آل فردان لعرض الشجرة العائلية الكاملة"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-amber-700" />
+                    <span>أنا من آل فردان 🔒</span>
+                  </button>
+                )
+              )}
+
               {/* Notification Enable Button for Visitors (Auto-hides once granted) */}
               {!isNotificationsGranted && onEnableNotifications && (
                 <button
@@ -100,13 +162,44 @@ export const Navbar: React.FC<NavbarProps> = ({
                   title="تفعيل إشعارات شجرة العائلة الفورية على هاتفك"
                 >
                   <Bell className="w-3.5 h-3.5 text-slate-950 animate-bounce" />
-                  <span className="hidden xs:inline">🔔 تفعيل إشعارات الشجرة</span>
-                  <span className="xs:hidden">🔔 إشعارات</span>
+                  <span className="hidden lg:inline">🔔 تفعيل إشعارات الشجرة</span>
+                  <span className="lg:hidden">🔔</span>
                 </button>
               )}
+
               {/* Authorized Admin Controls vs Visitor Status */}
               {isAuthorized ? (
-                <div className="flex items-center gap-1 sm:gap-2">
+                <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap sm:flex-nowrap">
+                  {/* Admin Toggle Switch: تفعيل / إيقاف نظام خصوصية النساء للزوار */}
+                  {onTogglePrivacyMode && (
+                    <button
+                      type="button"
+                      onClick={() => onTogglePrivacyMode(!privacyModeEnabled)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex-shrink-0 shadow-2xs active:scale-95 ${
+                        privacyModeEnabled
+                          ? 'bg-rose-50 hover:bg-rose-100 text-rose-900 border-rose-300'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
+                      }`}
+                      title={
+                        privacyModeEnabled
+                          ? 'نظام خصوصية النساء للزوار: مفعّل حالياً (يخفي أسماء النساء عن الزوار حتى إدخال كلمة مرور العائلة) — اضغط لإيقافه'
+                          : 'نظام خصوصية النساء للزوار: متوقف حالياً (تظهر الشجرة كاملة لجميع الزوار بدون كلمة مرور) — اضغط لتفعيله'
+                      }
+                    >
+                      {privacyModeEnabled ? (
+                        <EyeOff className="w-3.5 h-3.5 text-rose-600" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                      )}
+                      <span className="hidden md:inline">
+                        خصوصية النساء: {privacyModeEnabled ? 'مفعّلة 🔒' : 'متوقفة 🔓'}
+                      </span>
+                      <span className="md:hidden">
+                        {privacyModeEnabled ? 'الخصوصية 🔒' : 'الخصوصية 🔓'}
+                      </span>
+                    </button>
+                  )}
+
                   {/* Publish & Sync Button (Authorized Admin Only) */}
                   {onSaveForPublish && (
                     <button
@@ -164,6 +257,115 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Family Password / Mode Modal (أنا من آل فردان 🔒 / وضع العائلة 🔓) */}
+      {isFamilyPassModalOpen && privacyModeEnabled && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in font-['Readex_Pro',sans-serif]">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 relative text-right">
+            <button
+              type="button"
+              onClick={() => setIsFamilyPassModalOpen(false)}
+              className="absolute top-4 left-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+              title="إغلاق"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {isFamilyMember ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-100 border border-emerald-200 text-emerald-800 flex items-center justify-center flex-shrink-0">
+                    <Unlock className="w-6 h-6 text-emerald-700" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold font-['Alexandria'] text-slate-900">
+                      وضع العائلة الكامل مفعّل 🔓
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      جميع بيانات الشجرة وأسماء البنات والأمهات والزوجات والمصاهرات ظاهرة بالكامل على هذا الجهاز.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsFamilyPassModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    البقاء في وضع العائلة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsFamilyPassModalOpen(false);
+                      onLockFamilyMode?.();
+                    }}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>قفل وعودة لوضع الزوار</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleFamilyPassSubmit} className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-center flex-shrink-0">
+                    <Lock className="w-6 h-6 text-amber-700" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold font-['Alexandria'] text-slate-900">
+                      بوابة أفراد عائلة آل فردان 🔒
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      أدخل كلمة المرور الخاصة بأفراد العائلة لفتح العرض الكامل للشجرة (أسماء البنات والأمهات والزوجات والمصاهرات).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    كلمة مرور العائلة:
+                  </label>
+                  <input
+                    type="password"
+                    value={familyPassInput}
+                    onChange={(e) => {
+                      setFamilyPassInput(e.target.value);
+                      if (familyPassError) setFamilyPassError('');
+                    }}
+                    placeholder="أدخل كلمة المرور هنا..."
+                    className="w-full px-4 py-2.5 bg-slate-50 focus:bg-white border border-slate-300 focus:border-emerald-600 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    autoFocus
+                  />
+                  {familyPassError && (
+                    <p className="text-xs font-bold text-rose-600 pt-1">
+                      {familyPassError}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsFamilyPassModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
+                  >
+                    دخول وضع العائلة 🔓
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Fixed Right-Side Navigation Rail - Exactly on the Right Side of Screen for all devices */}
       <aside
