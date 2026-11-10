@@ -375,6 +375,19 @@ export async function syncContactInfoToCloud(info: ContactInfo): Promise<void> {
 
 let pendingCloudWriteTimer: ReturnType<typeof setTimeout> | null = null;
 let latestPendingState: FamilyState | null = null;
+const recentlyDeletedPhotoKeys = new Set<string>();
+
+export function markPhotoDeletedForCloud(key: string): void {
+  if (key) {
+    recentlyDeletedPhotoKeys.add(key);
+  }
+}
+
+export function clearPhotoDeletedForCloud(key: string): void {
+  if (key) {
+    recentlyDeletedPhotoKeys.delete(key);
+  }
+}
 
 /**
  * Save current state to Firestore so all connected devices update in real-time.
@@ -409,6 +422,11 @@ export async function syncFamilyStateToCloud(state: FamilyState): Promise<void> 
           } else if (v !== baselinePhotos[k] && v.length < 150000 && totalPhotoBytes + v.length < 550000) {
             compactPhotos[k] = v;
             totalPhotoBytes += v.length;
+          }
+        }
+        for (const delKey of recentlyDeletedPhotoKeys) {
+          if (!targetState.photos?.[delKey]) {
+            compactPhotos[delKey] = '';
           }
         }
 

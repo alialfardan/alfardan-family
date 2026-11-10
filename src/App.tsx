@@ -16,10 +16,12 @@ import {
   saveCustomAvatarBackup,
   removeCustomAvatarBackup,
   isValidPhotoEntry,
-  saveTreeToDisk
+  saveTreeToDisk,
+  uploadMemberAvatarToDisk,
+  deleteMemberAvatarFromDisk
 } from './data/treeManager';
 import { unregisterServiceWorkersAndClearCaches } from './pwa/registerServiceWorker';
-import { getDefaultAvatarDataUri, markAvatarUrlFailed } from './components/MemberAvatar';
+import { getDefaultAvatarDataUri, markAvatarUrlFailed, clearFailedAvatarUrl } from './components/MemberAvatar';
 import {
   subscribeToFamilyState,
   subscribeToContactInfo,
@@ -31,8 +33,10 @@ import {
   deleteArchivalPhotoFromCloud,
   syncNotableFigureToCloud,
   deleteNotableFigureFromCloud,
-  ensureCloudInitialized
-} from './firebase/realtimeTreeService';
+  ensureCloudInitialized,
+  markPhotoDeletedForCloud,
+  clearPhotoDeletedForCloud
+} from './firebase/treeService';
 import { Navbar } from './components/Navbar';
 import { TreeCanvas } from './components/TreeCanvas';
 import { BranchLegend } from './components/BranchLegend';
@@ -366,11 +370,7 @@ export default function App() {
       if (isAuthorized) {
         syncFamilyStateToCloud(familyState).catch(() => {});
       }
-      apiFetch('/api/save-family-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(familyState)
-      }).catch(() => {});
+      saveTreeToDisk(familyState).catch(() => {});
     }, 800);
 
     return () => clearTimeout(timer);
@@ -605,7 +605,10 @@ export default function App() {
   }, [showToast]);
 
   // Helper to immediately and permanently anchor state across disk (initialTreeData.json), localStorage, Firestore, and live server
-  const persistAndSyncImmediately = useCallback((nextState: FamilyState) => {
+  const persistAndSyncImmediately = useCallback((
+    nextState: FamilyState,
+    options?: { deletedPhotoKeys?: string[]; replacePhotos?: boolean }
+  ) => {
     const nextTs = getMonotonicTimestamp(nextState);
     lastImmediateSyncAtRef.current = Date.now();
     const stampedState: FamilyState = {
@@ -615,8 +618,8 @@ export default function App() {
     saveStateToStorage(stampedState);
     setHasUnsavedServerChanges(false);
 
-    // 1. Direct physical write to src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /__save_tree_to_disk
-    saveTreeToDisk(stampedState).catch(err => {
+    // 1. Direct physical write to src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /api/save-tree
+    saveTreeToDisk(stampedState, options).catch(err => {
       console.warn('Immediate disk write error:', err);
     });
 
@@ -626,8 +629,8 @@ export default function App() {
     });
 
     // 3. Direct instant mirror to server endpoints
-    mirrorSaveToAllEndpoints('/api/save-family-data', stampedState).catch(err => {
-      console.warn('Immediate save-family-data error:', err);
+    mirrorSaveToAllEndpoints('/api/save-tree', stampedState).catch(err => {
+      console.warn('Immediate save-tree error:', err);
     });
   }, []);
 
@@ -653,15 +656,14 @@ export default function App() {
     if (addEditModal.mode === 'add') {
       const newId = 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const newMemberKey = 'a' + newId;
-      const isBase64Photo = Boolean(data.photo && data.photo.startsWith('data:image/'));
-      const cleanAvatarPath = isBase64Photo ? `/avatars/${newMemberKey}.jpg?v=${Date.now()}` : (data.photo || undefined);
+      const hasPhoto = Boolean(data.photo && typeof data.photo === 'string' && data.photo.trim());
+      const vNow = Date.now();
+      const cleanAvatarPath = hasPhoto ? `/avatars/${newMemberKey}.jpg?v=${vNow}` : undefined;
 
-      if (isBase64Photo && data.photo) {
-        apiFetch('/api/upload-avatar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: newMemberKey, dataUrl: data.photo })
-        }).catch(() => {});
+      if (hasPhoto && data.photo) {
+        clearFailedAvatarUrl(newMemberKey);
+        clearPhotoDeletedForCloud(newMemberKey);
+        uploadMemberAvatarToDisk(newMemberKey, data.photo).catch(() => {});
       }
 
       lastImmediateSyncAtRef.current = Date.now();
@@ -681,19 +683,20 @@ export default function App() {
           del: false,
           motherInfo: data.motherInfo || undefined
         };
-        const nextState: FamilyState = {
+        const nextStateForDisk: FamilyState = {
           ...prev,
           members: deduplicateMembers([...prev.members, newMember]),
-          photos: data.photo ? { ...prev.photos, [newMemberKey]: data.photo } : prev.photos,
+          photos: hasPhoto && data.photo ? { ...prev.photos, [newMemberKey]: data.photo } : prev.photos,
           mothers: data.motherInfo ? { ...(prev.mothers || {}), [newMemberKey]: data.motherInfo } : prev.mothers,
           updatedAt: nextTs
         };
-        saveStateToStorage(nextState);
-        persistAndSyncImmediately(nextState);
-        return {
-          ...nextState,
+        persistAndSyncImmediately(nextStateForDisk);
+        const cleanNextState: FamilyState = {
+          ...nextStateForDisk,
           photos: cleanAvatarPath ? { ...prev.photos, [newMemberKey]: cleanAvatarPath } : prev.photos
         };
+        saveStateToStorage(cleanNextState);
+        return cleanNextState;
       });
 
       // Expand parent and select new person
@@ -708,19 +711,29 @@ export default function App() {
       const clearedMotherMarker: MotherInfo = { name: '', isFromFamily: false };
       const currentPerson = registry.people.get(key);
       const existingPhoto = familyState.photos?.[key] || currentPerson?.photo || '';
-      // ZERO PHOTO LOSS: If data.photo is empty/undefined, strictly preserve the existing photo
-      const finalPhoto = (data.photo && typeof data.photo === 'string' && data.photo.trim())
-        ? data.photo.trim()
-        : existingPhoto;
-      const isBase64Photo = Boolean(finalPhoto && finalPhoto.startsWith('data:image/'));
-      const cleanAvatarPath = isBase64Photo ? `/avatars/${key}.jpg?v=${Date.now()}` : finalPhoto;
+      const isPhotoExplicitlyRemoved = data.photo === '';
+      const finalPhoto = isPhotoExplicitlyRemoved
+        ? ''
+        : ((data.photo && typeof data.photo === 'string' && data.photo.trim())
+            ? data.photo.trim()
+            : existingPhoto);
 
-      if (isBase64Photo) {
-        apiFetch('/api/upload-avatar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, dataUrl: finalPhoto })
-        }).catch(() => {});
+      const isNewOrUpdatedPhoto = Boolean(
+        !isPhotoExplicitlyRemoved &&
+        finalPhoto &&
+        (finalPhoto.startsWith('data:image/') || finalPhoto !== existingPhoto)
+      );
+      const cleanAvatarPath = isPhotoExplicitlyRemoved
+        ? ''
+        : (finalPhoto ? (isNewOrUpdatedPhoto ? `/avatars/${key}.jpg?v=${Date.now()}` : finalPhoto) : '');
+
+      if (isPhotoExplicitlyRemoved) {
+        markPhotoDeletedForCloud(key);
+        deleteMemberAvatarFromDisk(key).catch(() => {});
+      } else if (isNewOrUpdatedPhoto && finalPhoto) {
+        clearFailedAvatarUrl(key);
+        clearPhotoDeletedForCloud(key);
+        uploadMemberAvatarToDisk(key, finalPhoto).catch(() => {});
       }
 
       lastImmediateSyncAtRef.current = Date.now();
@@ -730,7 +743,17 @@ export default function App() {
         const memberId = key.slice(1);
         setFamilyState(prev => {
           const nextTs = getMonotonicTimestamp(prev);
-          const nextState: FamilyState = {
+          const nextPhotosForDisk = { ...(prev.photos || {}) };
+          const nextPhotosClean = { ...(prev.photos || {}) };
+          if (isPhotoExplicitlyRemoved) {
+            delete nextPhotosForDisk[key];
+            delete nextPhotosClean[key];
+          } else if (finalPhoto) {
+            nextPhotosForDisk[key] = finalPhoto;
+            nextPhotosClean[key] = cleanAvatarPath;
+          }
+
+          const nextStateForDisk: FamilyState = {
             ...prev,
             members: prev.members.map(m =>
               m.id === memberId
@@ -749,25 +772,23 @@ export default function App() {
                   }
                 : m
             ),
-            photos: {
-              ...prev.photos,
-              ...(finalPhoto ? { [key]: finalPhoto } : {})
-            },
+            photos: nextPhotosForDisk,
             mothers: {
               ...(prev.mothers || {}),
               [key]: data.motherInfo ? data.motherInfo : clearedMotherMarker
             },
             updatedAt: nextTs
           };
-          saveStateToStorage(nextState);
-          persistAndSyncImmediately(nextState);
-          return {
-            ...nextState,
-            photos: {
-              ...prev.photos,
-              ...(cleanAvatarPath ? { [key]: cleanAvatarPath } : {})
-            }
+          persistAndSyncImmediately(nextStateForDisk, {
+            deletedPhotoKeys: isPhotoExplicitlyRemoved ? [key] : [],
+            replacePhotos: true
+          });
+          const cleanNextState: FamilyState = {
+            ...nextStateForDisk,
+            photos: nextPhotosClean
           };
+          saveStateToStorage(cleanNextState);
+          return cleanNextState;
         });
       } else {
         // Original member override
@@ -786,28 +807,36 @@ export default function App() {
             motherInfo: data.motherInfo ? data.motherInfo : clearedMotherMarker,
             at: nextTs
           };
-          const nextState: FamilyState = {
+          const nextPhotosForDisk = { ...(prev.photos || {}) };
+          const nextPhotosClean = { ...(prev.photos || {}) };
+          if (isPhotoExplicitlyRemoved) {
+            delete nextPhotosForDisk[key];
+            delete nextPhotosClean[key];
+          } else if (finalPhoto) {
+            nextPhotosForDisk[key] = finalPhoto;
+            nextPhotosClean[key] = cleanAvatarPath;
+          }
+
+          const nextStateForDisk: FamilyState = {
             ...prev,
             over: { ...prev.over, [key]: ov },
-            photos: {
-              ...prev.photos,
-              ...(finalPhoto ? { [key]: finalPhoto } : {})
-            },
+            photos: nextPhotosForDisk,
             mothers: {
               ...(prev.mothers || {}),
               [key]: data.motherInfo ? data.motherInfo : clearedMotherMarker
             },
             updatedAt: nextTs
           };
-          saveStateToStorage(nextState);
-          persistAndSyncImmediately(nextState);
-          return {
-            ...nextState,
-            photos: {
-              ...prev.photos,
-              ...(cleanAvatarPath ? { [key]: cleanAvatarPath } : {})
-            }
+          persistAndSyncImmediately(nextStateForDisk, {
+            deletedPhotoKeys: isPhotoExplicitlyRemoved ? [key] : [],
+            replacePhotos: true
+          });
+          const cleanNextState: FamilyState = {
+            ...nextStateForDisk,
+            photos: nextPhotosClean
           };
+          saveStateToStorage(cleanNextState);
+          return cleanNextState;
         });
       }
 
@@ -946,40 +975,53 @@ export default function App() {
   const handleRemovePhoto = (key?: string) => {
     const targetKey = key || avatarGalleryModal.targetKey;
     if (!targetKey) return;
-    removeCustomAvatarBackup(targetKey);
-    setFamilyState(prev => {
-      const nextTs = getMonotonicTimestamp(prev);
-      const nextState: FamilyState = {
-        ...prev,
-        photos: { ...(prev.photos || {}), [targetKey]: '' },
-        updatedAt: nextTs
-      };
-      persistAndSyncImmediately(nextState);
-      return nextState;
-    });
-    showToast('تم حذف الصورة وتحديث GitHub و Firebase بنجاح');
-  };
+    markPhotoDeletedForCloud(targetKey);
+    deleteMemberAvatarFromDisk(targetKey).catch(() => {});
 
-  const handleSelectGalleryPhoto = async (url: string) => {
-    if (!avatarGalleryModal.targetKey) return;
-    const key = avatarGalleryModal.targetKey;
-    if (!url.startsWith('data:image/')) {
-      removeCustomAvatarBackup(key);
-    }
-    const nextPhotos = { ...(familyState.photos || {}), [key]: url };
-    
     setFamilyState(prev => {
       const nextTs = getMonotonicTimestamp(prev);
+      const nextPhotos = { ...(prev.photos || {}) };
+      delete nextPhotos[targetKey];
       const nextState: FamilyState = {
         ...prev,
         photos: nextPhotos,
         updatedAt: nextTs
       };
-      persistAndSyncImmediately(nextState);
+      persistAndSyncImmediately(nextState, {
+        deletedPhotoKeys: [targetKey],
+        replacePhotos: true
+      });
       return nextState;
     });
+    showToast('تم حذف الصورة نهائياً من public/avatars/ وملفات المشروع و Firebase بنجاح');
+  };
 
-    showToast(`تم تعيين الصورة لـ «${avatarGalleryModal.memberName}» وتثبيتها سحابياً بنجاح`, 'success');
+  const handleSelectGalleryPhoto = async (url: string) => {
+    if (!avatarGalleryModal.targetKey) return;
+    const key = avatarGalleryModal.targetKey;
+    clearFailedAvatarUrl(key);
+    clearPhotoDeletedForCloud(key);
+    uploadMemberAvatarToDisk(key, url).catch(() => {});
+
+    const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
+
+    setFamilyState(prev => {
+      const nextTs = getMonotonicTimestamp(prev);
+      const nextStateForDisk: FamilyState = {
+        ...prev,
+        photos: { ...(prev.photos || {}), [key]: url },
+        updatedAt: nextTs
+      };
+      persistAndSyncImmediately(nextStateForDisk);
+      const nextCleanState: FamilyState = {
+        ...nextStateForDisk,
+        photos: { ...(prev.photos || {}), [key]: cleanAvatarPath }
+      };
+      saveStateToStorage(nextCleanState);
+      return nextCleanState;
+    });
+
+    showToast(`تم تعيين الصورة لـ «${avatarGalleryModal.memberName}» وحفظها في public/avatars/ بنجاح`, 'success');
   };
 
   const handleTriggerUploadNew = () => {
@@ -1027,11 +1069,9 @@ export default function App() {
     const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
 
     // 1. Immediately write physical .jpg file to public/avatars/[key].jpg on disk
-    apiFetch('/api/upload-avatar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, dataUrl: croppedDataUrl })
-    }).catch(() => {});
+    clearFailedAvatarUrl(key);
+    clearPhotoDeletedForCloud(key);
+    uploadMemberAvatarToDisk(key, croppedDataUrl).catch(() => {});
 
     lastImmediateSyncAtRef.current = Date.now();
 
@@ -1600,16 +1640,23 @@ export default function App() {
     try {
       const nextTs = getMonotonicTimestamp(familyState);
       lastImmediateSyncAtRef.current = Date.now();
+      const cleanPhotos = { ...(familyState.photos || {}) };
+      for (const [k, v] of Object.entries(cleanPhotos)) {
+        if (!v || !v.trim()) {
+          delete cleanPhotos[k];
+        }
+      }
+
       const stateToSave: FamilyState = {
         ...familyState,
         members: deduplicateMembers(familyState.members || []),
-        photos: { ...(familyState.photos || {}) },
+        photos: cleanPhotos,
         archivalPhotos: [...(familyState.archivalPhotos || [])],
         updatedAt: nextTs
       };
 
-      // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update src/data/initialTreeData.json & public/fardan_family_tree_backup.json
-      const diskSaved = await saveTreeToDisk(stateToSave);
+      // 1. Write full tree data + extract any Base64 photos into public/avatars/ and update src/data/initialTreeData.json & public/fardan_family_tree_backup.json via /api/save-tree
+      const diskSaved = await saveTreeToDisk(stateToSave, { replacePhotos: true });
       saveStateToStorage(stateToSave);
 
       // 2. Sync to Cloud Firestore instantly
@@ -1622,8 +1669,8 @@ export default function App() {
         console.warn('Cloud sync on publish warning:', cloudErr);
       }
 
-      // 3. Mirror full state to /api/save-family-data
-      await mirrorSaveToAllEndpoints('/api/save-family-data', stateToSave).catch(() => {});
+      // 3. Mirror full state to /api/save-tree
+      await mirrorSaveToAllEndpoints('/api/save-tree', stateToSave).catch(() => {});
 
       setFamilyState(stateToSave);
       setHasUnsavedServerChanges(false);

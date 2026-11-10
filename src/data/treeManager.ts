@@ -231,7 +231,7 @@ export function mergeNotableFiguresLists(
 const STORAGE_KEY = 'fardan_family_tree_state_v5';
 const CUSTOM_AVATARS_STORAGE_KEY = 'fardan_custom_avatars_v2';
 
-const VALID_PHOTO_KEY_RE = /^(o\d+|oF|oR|am_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+)$/;
+const VALID_PHOTO_KEY_RE = /^(o\d+|oF|oR|ot\d+|am_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+|notable_[a-zA-Z0-9_-]+)$/;
 
 export function isValidPhotoEntry(key: string, val: unknown): val is string {
   if (!key || !VALID_PHOTO_KEY_RE.test(key) || DEAD_PHOTO_KEYS.has(key)) return false;
@@ -560,6 +560,9 @@ export function mergeFamilyStates(
     if (incVal === '') {
       if (incomingIsNewer || forceIncomingAuthoritative) {
         delete mergedPhotos[k];
+        if (DEFAULT_FAMILY_DATA?.photos) {
+          delete DEFAULT_FAMILY_DATA.photos[k];
+        }
       }
       continue;
     }
@@ -748,17 +751,92 @@ export function loadSavedState(): FamilyState {
 }
 
 /**
- * Physical Disk-Write Bridge:
- * Immediately writes the complete tree data to src/data/initialTreeData.json and
- * public/fardan_family_tree_backup.json on disk via /__save_tree_to_disk, while
- * extracting any Base64 photos into physical .jpg files inside public/avatars/.
+ * Saves an uploaded or selected avatar directly to public/avatars/[key].jpg on disk
+ * and updates src/data/initialTreeData.json & public/fardan_family_tree_backup.json
+ * with the clean path /avatars/[key].jpg?v=[timestamp].
  */
-export async function saveTreeToDisk(state: FamilyState): Promise<boolean> {
+export async function uploadMemberAvatarToDisk(key: string, dataUrl: string): Promise<string> {
+  const fallbackCleanPath = `/avatars/${key}.jpg?v=${Date.now()}`;
+  if (!key || !dataUrl) return fallbackCleanPath;
+  removeCustomAvatarBackup(key);
+  if (DEFAULT_FAMILY_DATA?.photos) {
+    DEFAULT_FAMILY_DATA.photos[key] = fallbackCleanPath;
+  }
+  if (typeof window === 'undefined') return fallbackCleanPath;
+  try {
+    const res = await fetch('/api/upload-avatar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, dataUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.url) {
+        if (DEFAULT_FAMILY_DATA?.photos) {
+          DEFAULT_FAMILY_DATA.photos[key] = data.url;
+        }
+        return data.url;
+      }
+    }
+  } catch {}
+  return fallbackCleanPath;
+}
+
+/**
+ * Permanently deletes a member's photo from public/avatars/[key].jpg on disk
+ * and removes photos[key] (delete photos[id]) from initialTreeData.json & fardan_family_tree_backup.json.
+ */
+export async function deleteMemberAvatarFromDisk(key: string): Promise<boolean> {
+  if (!key) return false;
+  removeCustomAvatarBackup(key);
+  if (DEFAULT_FAMILY_DATA?.photos) {
+    delete DEFAULT_FAMILY_DATA.photos[key];
+  }
+  if (typeof window === 'undefined') return false;
+  try {
+    const res = await fetch('/api/delete-avatar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Physical Disk-Write Bridge (/api/save-tree):
+ * Immediately writes the complete tree data to src/data/initialTreeData.json and
+ * public/fardan_family_tree_backup.json on disk via /api/save-tree, while
+ * extracting any Base64 photos into physical .jpg files inside public/avatars/[id].jpg
+ * and removing any deleted photos from public/avatars/ and photos[id].
+ */
+export async function saveTreeToDisk(
+  state: FamilyState,
+  options?: { deletedPhotoKeys?: string[]; replacePhotos?: boolean }
+): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   try {
     const cleanPhotos = cleanPhotosMap(state.photos);
+    const deletedKeys = options?.deletedPhotoKeys ? [...options.deletedPhotoKeys] : [];
+    for (const [k, v] of Object.entries(cleanPhotos)) {
+      if (v === '') {
+        deletedKeys.push(k);
+        delete cleanPhotos[k];
+      }
+    }
+    for (const dk of deletedKeys) {
+      delete cleanPhotos[dk];
+      if (DEFAULT_FAMILY_DATA?.photos) {
+        delete DEFAULT_FAMILY_DATA.photos[dk];
+      }
+    }
+
     const fullPayload = {
       treeData: RAW_TREE,
+      deletedPhotoKeys: Array.from(new Set(deletedKeys)),
+      replacePhotos: options?.replacePhotos ?? true,
       familyData: {
         ...state,
         members: deduplicateMembers(state.members || []),
@@ -766,12 +844,21 @@ export async function saveTreeToDisk(state: FamilyState): Promise<boolean> {
         updatedAt: normalizeTimestamp(state.updatedAt) || Date.now()
       }
     };
-    const res = await fetch('/__save_tree_to_disk', {
+    const res = await fetch('/api/save-tree', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fullPayload)
     });
-    return res.ok;
+    if (res.ok) {
+      try {
+        const json = await res.json();
+        if (json?.photos && DEFAULT_FAMILY_DATA) {
+          DEFAULT_FAMILY_DATA.photos = { ...json.photos };
+        }
+      } catch {}
+      return true;
+    }
+    return false;
   } catch {
     return false;
   }

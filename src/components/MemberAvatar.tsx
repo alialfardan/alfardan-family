@@ -4,19 +4,27 @@ import { getArabicInitial, loadCustomAvatarsBackup } from '../data/treeManager';
 // Session-wide cache of URLs that failed to load so we never re-request a 404 avatar
 const failedAvatarUrls = new Set<string>();
 
-const VALID_AVATAR_PATH_RE = /^\/avatars\/(o\d+|oF|oR|am_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i;
+const VALID_AVATAR_PATH_RE = /^\/avatars\/(o\d+|oF|oR|ot\d+|am_[a-zA-Z0-9_-]+|m_[a-zA-Z0-9_-]+|arch_[a-zA-Z0-9_-]+|photo_[a-zA-Z0-9_-]+|notable_[a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i;
 
 export function markAvatarUrlFailed(url: string): void {
   if (!url) return;
   failedAvatarUrls.add(url);
-  const base = url.split('?')[0];
-  if (base) failedAvatarUrls.add(base);
+}
+
+export function clearFailedAvatarUrl(keyOrUrl: string): void {
+  if (!keyOrUrl) return;
+  failedAvatarUrls.delete(keyOrUrl);
+  const cleanKey = keyOrUrl.replace(/^\/avatars\//, '').split('.')[0].split('?')[0];
+  for (const item of Array.from(failedAvatarUrls)) {
+    if (item.includes(`/avatars/${cleanKey}.`)) {
+      failedAvatarUrls.delete(item);
+    }
+  }
 }
 
 export function isAvatarUrlFailed(url?: string | null): boolean {
   if (!url) return true;
-  const base = url.split('?')[0];
-  return failedAvatarUrls.has(url) || (base ? failedAvatarUrls.has(base) : false);
+  return failedAvatarUrls.has(url);
 }
 
 /**

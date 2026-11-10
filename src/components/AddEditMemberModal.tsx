@@ -50,6 +50,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
   const [parentKey, setParentKey] = useState<string>('');
   const [selectedMotherId, setSelectedMotherId] = useState<string>('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoRemoved, setPhotoRemoved] = useState(false);
   const [isDeceased, setIsDeceased] = useState(false);
   const [deathYear, setDeathYear] = useState('');
 
@@ -81,6 +82,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
         setSelectedMotherId('');
       }
       setPhoto(null);
+      setPhotoRemoved(false);
       setIsDeceased(false);
       setDeathYear('');
       setIsChangingParent(false);
@@ -108,6 +110,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
           setSelectedMotherId('');
         }
         setPhoto(person.photo || null);
+        setPhotoRemoved(false);
         setIsChangingParent(false);
         setErrorMessage('');
         setConfirmingDelete(false);
@@ -221,7 +224,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
       birthDate: birthDateVal,
       note: note.trim(),
       parentKey,
-      photo,
+      photo: photoRemoved ? '' : photo,
       motherInfo,
       isDeceased,
       deathYear: parsedDeathYear
@@ -512,8 +515,11 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
                 {photo && (
                   <button
                     type="button"
-                    onClick={() => setPhoto(null)}
-                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                    onClick={() => {
+                      setPhoto(null);
+                      setPhotoRemoved(true);
+                    }}
+                    className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
                     title="حذف الصورة"
                   >
                     <Trash className="w-4 h-4" />
@@ -625,6 +631,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
           }}
           onCropComplete={(croppedUrl) => {
             setPhoto(croppedUrl);
+            setPhotoRemoved(false);
             setIsCropModalOpen(false);
             setRawImageForCrop('');
           }}
