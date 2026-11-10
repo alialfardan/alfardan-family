@@ -26,7 +26,9 @@ import {
   Phone,
   MessageCircle,
   Mail,
-  Trash2
+  Trash2,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { KinshipFinder } from './KinshipFinder';
 import { SmartVoiceAdvisor } from './SmartVoiceAdvisor';
@@ -44,6 +46,10 @@ interface FamilyExplorerViewProps {
   onSelectPerson?: (key: string) => void;
   isAuthorized?: boolean;
   isPrivacyRestricted?: boolean;
+  privacyModeEnabled?: boolean;
+  isFamilyMember?: boolean;
+  onUnlockFamilyMode?: () => void;
+  onLockFamilyMode?: () => void;
   onOpenContact?: () => void;
 }
 
@@ -62,6 +68,10 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
   onSelectPerson,
   isAuthorized = false,
   isPrivacyRestricted = false,
+  privacyModeEnabled = true,
+  isFamilyMember = false,
+  onUnlockFamilyMode,
+  onLockFamilyMode,
   onOpenContact,
 }) => {
   // Navigation mode: 'home' or 'person'
@@ -71,6 +81,23 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
   const [heroSearchQuery, setHeroSearchQuery] = useState('');
   const [isHeroSearchOpen, setIsHeroSearchOpen] = useState(false);
   const heroSearchRef = useRef<HTMLDivElement>(null);
+
+  // Family Password Modal State
+  const [isFamilyPassModalOpen, setIsFamilyPassModalOpen] = useState(false);
+  const [familyPassInput, setFamilyPassInput] = useState('');
+  const [familyPassError, setFamilyPassError] = useState('');
+
+  const handleFamilyPassSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (familyPassInput.trim().toLowerCase() === 'alfardan2026') {
+      setFamilyPassError('');
+      setFamilyPassInput('');
+      setIsFamilyPassModalOpen(false);
+      onUnlockFamilyMode?.();
+    } else {
+      setFamilyPassError('كلمة المرور غير صحيحة، يرجى التأكد من كلمة مرور العائلة');
+    }
+  };
 
   // Close search dropdown on click outside
   useEffect(() => {
@@ -178,16 +205,137 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Reusable Family Password Modal (Responsive & Mobile Keyboard Friendly)
+  const renderFamilyPasswordModal = () => {
+    if (!isFamilyPassModalOpen || !privacyModeEnabled) return null;
+    return (
+      <div
+        className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/65 backdrop-blur-xs flex items-center justify-center p-4 pb-24 sm:pb-4 animate-in fade-in font-['Readex_Pro',sans-serif]"
+        onClick={() => setIsFamilyPassModalOpen(false)}
+      >
+        <div
+          className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-7 shadow-2xl border-2 border-amber-200/80 space-y-5 relative text-right my-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => setIsFamilyPassModalOpen(false)}
+            className="absolute top-4 left-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors cursor-pointer"
+            title="إغلاق"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {isFamilyMember ? (
+            <div className="space-y-5">
+              <div className="flex items-center gap-3.5">
+                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-emerald-100 border-2 border-emerald-300 text-emerald-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <Unlock className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-extrabold font-['Alexandria'] text-slate-900">
+                    أنا من العائلة 🔓 - وضع العائلة مفعل
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
+                    جميع بيانات الشجرة وأسماء البنات والأمهات والزوجات والمصاهرات ظاهرة بالكامل على هذا الجهاز.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsFamilyPassModalOpen(false)}
+                  className="py-3 px-5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-sm font-bold transition-colors cursor-pointer"
+                >
+                  البقاء في وضع العائلة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFamilyPassModalOpen(false);
+                    onLockFamilyMode?.();
+                  }}
+                  className="py-3.5 px-6 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-2xl text-sm font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>قفل وعودة لوضع الزوار</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <form onSubmit={handleFamilyPassSubmit} className="space-y-5">
+              <div className="flex items-center gap-3.5">
+                <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-amber-100 to-amber-200 border-2 border-amber-300 text-amber-900 flex items-center justify-center flex-shrink-0 shadow-sm">
+                  <Lock className="w-6 h-6 sm:w-7 sm:h-7 text-amber-800" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-extrabold font-['Alexandria'] text-slate-900">
+                    بوابة «أنا من العائلة 🔒»
+                  </h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
+                    أدخل الرمز السري الخاص بأفراد العائلة لفتح العرض الكامل للشجرة (أسماء البنات والأمهات والزوجات والمصاهرات).
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs sm:text-sm font-bold text-slate-800">
+                  الرمز السري للعائلة:
+                </label>
+                <input
+                  type="password"
+                  value={familyPassInput}
+                  onChange={(e) => {
+                    setFamilyPassInput(e.target.value);
+                    if (familyPassError) setFamilyPassError('');
+                  }}
+                  placeholder="أدخل الرمز السري هنا..."
+                  className="w-full px-4 py-3.5 bg-slate-50 focus:bg-white border-2 border-slate-300 focus:border-amber-600 rounded-2xl text-base font-bold text-center text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-4 focus:ring-amber-500/20 transition-all"
+                  autoFocus
+                />
+                {familyPassError && (
+                  <p className="text-xs sm:text-sm font-bold text-rose-600 pt-1 text-center">
+                    {familyPassError}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsFamilyPassModalOpen(false)}
+                  className="py-3.5 px-5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-sm font-bold transition-colors cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 sm:flex-initial py-3.5 px-7 bg-gradient-to-r from-emerald-700 to-emerald-800 hover:from-emerald-800 hover:to-emerald-900 active:scale-98 text-white rounded-2xl text-sm sm:text-base font-extrabold shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Unlock className="w-4 h-4" />
+                  <span>تأكيد ودخول وضع العائلة 🔓</span>
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // If in Home Mode: Show the Family Logo, Grandfather portal, and Major Branches
   if (isHome) {
     return (
       <div className="min-h-full bg-gradient-to-b from-[#f8f9f6] via-[#f4f6f1] to-[#eef2ec] text-slate-800 font-['Readex_Pro',sans-serif] pb-24">
+        {renderFamilyPasswordModal()}
+
         {/* Hero Section with Official Logo */}
-        <div className="relative pt-8 pb-10 px-4 text-center z-30">
+        <div className="relative pt-6 sm:pt-8 pb-8 sm:pb-10 px-3 sm:px-4 text-center z-30">
           <div className="max-w-2xl mx-auto space-y-4">
             {/* Logo with Golden Glow */}
             <div className="relative inline-block mx-auto group">
-              <div className="w-36 h-36 sm:w-44 sm:h-44 mx-auto rounded-full p-1.5 bg-gradient-to-tr from-amber-400 via-amber-200 to-amber-500 shadow-2xl transition-transform duration-300 group-hover:scale-105">
+              <div className="w-32 h-32 sm:w-44 sm:h-44 mx-auto rounded-full p-1.5 bg-gradient-to-tr from-amber-400 via-amber-200 to-amber-500 shadow-2xl transition-transform duration-300 group-hover:scale-105">
                 <div className="w-full h-full rounded-full overflow-hidden bg-white p-1">
                   <img
                     src="/fardan-logo.jpg"
@@ -201,25 +349,61 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               </div>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl font-extrabold font-['Alexandria'] text-slate-900 tracking-tight pt-2">
+            <h1 className="text-2xl sm:text-4xl font-extrabold font-['Alexandria'] text-slate-900 tracking-tight pt-2">
               شجرة عائلة الفردان
             </h1>
 
-            <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed">
+            <p className="text-xs sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed px-2">
               موثقة ومحققة عبر الأجيال ابتداءً من الجد الأكبر <strong>الشيخ علي</strong>
             </p>
 
-            <div className="flex items-center justify-center gap-2 pt-1 text-xs text-slate-500">
-              <span className="px-3 py-1 bg-white border border-slate-200 rounded-full font-semibold shadow-2xs">
+            {/* Registered Members & Generations Counter */}
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs text-slate-600">
+              <span className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-full font-bold shadow-2xs">
                 {registry.stats.totalCount} فرداً مسجلاً
               </span>
-              <span className="px-3 py-1 bg-white border border-slate-200 rounded-full font-semibold shadow-2xs">
+              <span className="px-3.5 py-1.5 bg-white border border-slate-200 rounded-full font-bold shadow-2xs">
                 {registry.stats.totalGenerations} أجيال متعاقبة
               </span>
             </div>
 
-            {/* Prominent Search Bar directly under title */}
-            <div ref={heroSearchRef} className="pt-3 max-w-xl mx-auto w-full relative z-50 text-right">
+            {/* Centered Family Privacy Mode Button («أنا من العائلة 🔒» / «أنا من العائلة 🔓 - وضع العائلة مفعل»)
+                Positioned directly under the Registered Members counter and directly above the Search box */}
+            {privacyModeEnabled && (
+              <div className="pt-2 pb-1 flex justify-center px-2">
+                {isFamilyMember ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFamilyPassError('');
+                      setIsFamilyPassModalOpen(true);
+                    }}
+                    className="w-full sm:w-auto max-w-md inline-flex items-center justify-center gap-2.5 px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800 hover:from-emerald-700 hover:via-emerald-800 hover:to-emerald-900 text-white border-2 border-emerald-300/90 ring-4 ring-emerald-500/20 rounded-2xl text-sm sm:text-base font-extrabold font-['Alexandria'] shadow-lg shadow-emerald-700/25 hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+                    title="وضع العائلة مفعل حالياً — اضغط لقفل الوضع والعودة لوضع الزوار"
+                  >
+                    <Unlock className="w-5 h-5 text-emerald-100 flex-shrink-0" />
+                    <span>أنا من العائلة 🔓 - وضع العائلة مفعل</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFamilyPassError('');
+                      setFamilyPassInput('');
+                      setIsFamilyPassModalOpen(true);
+                    }}
+                    className="w-full sm:w-auto max-w-xs sm:max-w-md inline-flex items-center justify-center gap-2.5 px-7 sm:px-9 py-3 sm:py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:via-amber-700 hover:to-amber-800 text-white border-2 border-amber-300/90 ring-4 ring-amber-400/25 rounded-2xl text-sm sm:text-base font-extrabold font-['Alexandria'] shadow-lg shadow-amber-600/25 hover:shadow-xl hover:shadow-amber-600/35 transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+                    title="أدخل الرمز السري لأفراد العائلة لعرض الشجرة العائلية الكاملة"
+                  >
+                    <Lock className="w-5 h-5 text-amber-100 flex-shrink-0" />
+                    <span>أنا من العائلة 🔒</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Prominent Search Bar directly under the 'أنا من العائلة' button */}
+            <div ref={heroSearchRef} className="pt-2 max-w-xl mx-auto w-full relative z-50 text-right">
               <div className="relative shadow-md hover:shadow-lg rounded-2xl bg-white border border-slate-200 hover:border-emerald-600 focus-within:border-emerald-700 focus-within:ring-4 focus-within:ring-emerald-600/15 transition-all">
                 <Search className="w-5 h-5 absolute right-4 top-3.5 text-emerald-700 pointer-events-none" />
                 <input

@@ -81,8 +81,13 @@ function getServerAvatarVersion(url?: string): number {
   return m ? parseInt(m[1], 10) || 0 : 0;
 }
 
+const DEAD_SERVER_PHOTO_KEYS = new Set([
+  'o720', 'am_mvr3piu7h618', 'o310', 'o560', 'o656', 'o652',
+  '1', '2', '33b3fde3-0f05-44d6-9aad-af4eadc51ce9'
+]);
+
 function isValidServerPhotoEntry(key: string, val: unknown): val is string {
-  if (!key || !VALID_SERVER_PHOTO_KEY_RE.test(key)) return false;
+  if (!key || !VALID_SERVER_PHOTO_KEY_RE.test(key) || DEAD_SERVER_PHOTO_KEYS.has(key)) return false;
   if (typeof val !== 'string') return false;
   const trimmed = val.trim();
   if (!trimmed) return false;
@@ -96,7 +101,12 @@ function isValidServerPhotoEntry(key: string, val: unknown): val is string {
     return false;
   }
   if (trimmed.startsWith('/avatars/')) {
-    return /^\/avatars\/([a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(trimmed);
+    if (!/^\/avatars\/([a-zA-Z0-9_-]+)\.(jpg|jpeg|png|webp)(\?.*)?$/i.test(trimmed)) {
+      return false;
+    }
+    const cleanFile = trimmed.split('?')[0].replace(/^\/avatars\//, '');
+    const avatarFullPath = path.resolve(__dirname, 'public/avatars', cleanFile);
+    return fs.existsSync(avatarFullPath);
   }
   return true;
 }

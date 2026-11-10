@@ -341,7 +341,8 @@ export function standardizeArabicSpelling(text: string): string {
 }
 
 const DEAD_PHOTO_KEYS = new Set([
-  'o720', 'am_mvr3piu7h618', 'o310', 'o560', 'o656', 'o652'
+  'o720', 'am_mvr3piu7h618', 'o310', 'o560', 'o656', 'o652',
+  '1', '2', '33b3fde3-0f05-44d6-9aad-af4eadc51ce9'
 ]);
 
 export function cleanPhotosMap(photos?: Record<string, string>): Record<string, string> {

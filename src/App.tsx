@@ -690,7 +690,7 @@ export default function App() {
     });
     showToast(
       enabled
-        ? 'تم تفعيل نظام خصوصية النساء للزوار 🔒 (يظهر زر «أنا من آل فردان» وتُخفى أسماء النساء للزوار)'
+        ? 'تم تفعيل نظام خصوصية النساء للزوار 🔒 (يظهر زر «أنا من العائلة» وتُخفى أسماء النساء للزوار)'
         : 'تم إيقاف نظام خصوصية النساء 🔓 (الشجرة الكاملة بجميع الأسماء متاحة لجميع الزوار بدون كلمة مرور)',
       'success'
     );
@@ -1925,6 +1925,10 @@ export default function App() {
               }}
               isAuthorized={isAuthorized}
               isPrivacyRestricted={isPrivacyRestricted}
+              privacyModeEnabled={privacyModeEnabled}
+              isFamilyMember={isFamilyMember}
+              onUnlockFamilyMode={handleUnlockFamilyMode}
+              onLockFamilyMode={handleLockFamilyMode}
               onOpenContact={() => setIsContactModalOpen(true)}
             />
           </div>
