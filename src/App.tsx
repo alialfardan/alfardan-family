@@ -1861,7 +1861,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#f4f6f1] text-[#121714]">
+    <div className="flex flex-col h-screen h-[100dvh] w-screen overflow-hidden bg-[#f4f6f1] text-[#121714]">
       {/* Top Navbar */}
       <Navbar
         currentTab={currentTab}
@@ -1968,7 +1968,13 @@ export default function App() {
 
             {/* Selected Person Details Drawer (Right side on desktop, adapted on mobile) */}
             {isDrawerOpen && selectedKey && (
-              <div className="absolute top-4 bottom-4 right-2 sm:right-4 z-30 w-full sm:w-96 max-w-[calc(100vw-76px)] sm:max-w-96 rounded-3xl overflow-hidden shadow-2xl border border-slate-200/90 transition-all">
+              <div
+                className="member-modal-wrapper absolute top-2 sm:top-4 right-2 sm:right-4 z-30 w-full sm:w-96 max-w-[calc(100vw-76px)] sm:max-w-96 max-h-[calc(100vh-80px)] max-h-[calc(100dvh-80px)] rounded-3xl overflow-hidden shadow-2xl border border-slate-200/90 transition-all flex flex-col touch-pan-y"
+                style={{
+                  maxHeight: 'calc(100dvh - 80px)',
+                  touchAction: 'pan-y'
+                }}
+              >
                 <PersonDetailDrawer
                   personKey={selectedKey}
                   registry={registry}

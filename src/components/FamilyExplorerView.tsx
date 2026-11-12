@@ -761,7 +761,13 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
 
   // Person & Children View (When browsing a father/mother and their children)
   return (
-    <div className="min-h-full bg-[#f8f9f6] text-slate-800 font-['Readex_Pro',sans-serif] pb-24">
+    <div
+      className="min-h-full bg-[#f8f9f6] text-slate-800 font-['Readex_Pro',sans-serif] pb-28 touch-pan-y"
+      style={{
+        paddingBottom: 'calc(120px + env(safe-area-inset-bottom, 0px))',
+        touchAction: 'pan-y'
+      }}
+    >
       {/* Top Sticky Breadcrumbs & Back Bar */}
       <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">

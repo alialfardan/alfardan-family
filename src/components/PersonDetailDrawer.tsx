@@ -279,12 +279,22 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white text-slate-800 shadow-2xl overflow-y-auto font-['Readex_Pro',sans-serif]">
+    <div
+      className="member-modal-scroll flex flex-col w-full h-full max-h-[calc(100vh-80px)] max-h-[calc(100dvh-80px)] bg-white text-slate-800 shadow-2xl overflow-y-auto overscroll-contain touch-pan-y font-['Readex_Pro',sans-serif]"
+      style={{
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehavior: 'contain',
+        touchAction: 'pan-y',
+        maxHeight: 'calc(100dvh - 80px)'
+      }}
+    >
       {/* Top Banner with Branch Color Accent */}
       <div
-        className="relative px-6 pt-6 pb-5 border-b border-slate-100 transition-colors"
+        className="relative flex-shrink-0 px-6 pt-6 pb-5 border-b border-slate-100 transition-colors touch-pan-y"
         style={{
-          background: `linear-gradient(135deg, ${branchInfo.bg} 0%, #ffffff 80%)`
+          background: `linear-gradient(135deg, ${branchInfo.bg} 0%, #ffffff 80%)`,
+          touchAction: 'pan-y'
         }}
       >
         {/* Close Button */}
@@ -444,7 +454,13 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
       </div>
 
       {/* Main Drawer Body */}
-      <div className="flex-1 p-6 space-y-6">
+      <div
+        className="member-modal-body flex-shrink-0 p-6 pb-28 space-y-6 touch-pan-y"
+        style={{
+          paddingBottom: 'calc(120px + env(safe-area-inset-bottom, 0px))',
+          touchAction: 'pan-y'
+        }}
+      >
         {/* Quick Stats Grid */}
         <div className="grid grid-cols-3 gap-2.5">
           <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 text-center">

@@ -18,6 +18,35 @@
   }
 }
 
+/* Smooth vertical touch scrolling for Member Details Modal / Drawer & all popups on mobile */
+.member-modal-wrapper {
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  touch-action: pan-y;
+}
+
+.member-modal-scroll {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior: contain !important;
+  overscroll-behavior-y: contain !important;
+  touch-action: pan-y !important;
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+}
+
+.member-modal-body {
+  padding-bottom: 120px !important;
+  padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+  touch-action: pan-y !important;
+}
+
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
 /* Custom discreet scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
