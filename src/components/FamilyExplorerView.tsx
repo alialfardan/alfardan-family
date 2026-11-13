@@ -708,6 +708,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               onSelectPerson={(key) => handleOpenPerson(key)}
               onSwitchToTree={onSwitchToFullTree}
               isPrivacyRestricted={isPrivacyRestricted}
+              onUnlockFamilyMode={onUnlockFamilyMode}
             />
           </div>
 
@@ -1224,6 +1225,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               onSelectPerson={(key) => handleOpenPerson(key)}
               onSwitchToTree={onSwitchToFullTree}
               isPrivacyRestricted={isPrivacyRestricted}
+              onUnlockFamilyMode={onUnlockFamilyMode}
             />
           </div>
 

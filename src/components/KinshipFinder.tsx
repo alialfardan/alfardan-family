@@ -2,7 +2,12 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
 import { searchFamilyMembers, BRANCH_COLORS, getArabicInitial, getQuadLineageName } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
-import { analyzeKinship, KinshipResult } from '../data/kinshipAnalyzer';
+import {
+  analyzeKinship,
+  KinshipResult,
+  formatPersonDisplayName,
+  formatFemaleInfoDisplayName
+} from '../data/kinshipAnalyzer';
 import {
   Users,
   Search,
@@ -10,21 +15,18 @@ import {
   Sparkles,
   GitMerge,
   ChevronDown,
+  ChevronUp,
   X,
   ExternalLink,
   Copy,
   Check,
   Award,
-  Calendar,
   Compass,
-  ArrowLeft,
-  ArrowRight,
-  UserCheck,
   Heart,
-  Layers,
-  BookOpen,
   Volume2,
-  VolumeX
+  VolumeX,
+  Lock,
+  GitBranch
 } from 'lucide-react';
 
 interface KinshipFinderProps {
@@ -32,38 +34,36 @@ interface KinshipFinderProps {
   onSelectPerson?: (key: string, opts?: { reveal?: boolean; center?: boolean }) => void;
   onSwitchToTree?: (key?: string) => void;
   isPrivacyRestricted?: boolean;
+  onUnlockFamilyMode?: () => void;
 }
+
+type PerspectiveTab = 'paternal' | 'maternal' | 'cross' | 'inlaw' | null;
 
 export const KinshipFinder: React.FC<KinshipFinderProps> = ({
   registry,
   onSelectPerson,
   onSwitchToTree,
-  isPrivacyRestricted = false
+  isPrivacyRestricted = false,
+  onUnlockFamilyMode
 }) => {
-  // Key A (Subject - الطرف الأول)
   const [keyA, setKeyA] = useState<string>('');
-  // Key B (Reference - الطرف الثاني)
   const [keyB, setKeyB] = useState<string>('');
 
-  // Search input queries
   const [queryA, setQueryA] = useState('');
   const [queryB, setQueryB] = useState('');
 
-  // Dropdown open states
   const [isOpenA, setIsOpenA] = useState(false);
   const [isOpenB, setIsOpenB] = useState(false);
 
-  // Copy toast state & voice read state
   const [copiedSummary, setCopiedSummary] = useState(false);
   const [isSpeakingKinship, setIsSpeakingKinship] = useState(false);
 
-  // Active perspective tab: 'all' | 'paternal' | 'maternal' | 'inlaw'
-  const [activePerspective, setActivePerspective] = useState<'all' | 'paternal' | 'maternal' | 'inlaw'>('all');
+  // All 4 sections closed by default
+  const [activePerspective, setActivePerspective] = useState<PerspectiveTab>(null);
 
   const containerRefA = useRef<HTMLDivElement>(null);
   const containerRefB = useRef<HTMLDivElement>(null);
 
-  // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRefA.current && !containerRefA.current.contains(event.target as Node)) {
@@ -77,28 +77,32 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Autocomplete results for Party 1
+  useEffect(() => {
+    setActivePerspective(null);
+  }, [keyA, keyB]);
+
   const resultsA = useMemo(() => {
     if (!queryA.trim()) return [];
     return searchFamilyMembers(queryA, registry.people, 40, { excludeFemales: isPrivacyRestricted });
   }, [queryA, registry, isPrivacyRestricted]);
 
-  // Autocomplete results for Party 2
   const resultsB = useMemo(() => {
     if (!queryB.trim()) return [];
     return searchFamilyMembers(queryB, registry.people, 40, { excludeFemales: isPrivacyRestricted });
   }, [queryB, registry, isPrivacyRestricted]);
 
-  // Compute Kinship
   const kinshipResult: KinshipResult | null = useMemo(() => {
     if (!keyA || !keyB) return null;
-    return analyzeKinship(keyA, keyB, registry.people);
-  }, [keyA, keyB, registry]);
+    return analyzeKinship(keyA, keyB, registry.people, isPrivacyRestricted);
+  }, [keyA, keyB, registry, isPrivacyRestricted]);
 
   const personA = keyA ? registry.people.get(keyA) : null;
   const personB = keyB ? registry.people.get(keyB) : null;
 
-  // Swap parties
+  const togglePerspective = (tab: Exclude<PerspectiveTab, null>) => {
+    setActivePerspective(prev => (prev === tab ? null : tab));
+  };
+
   const handleSwap = () => {
     const tempKey = keyA;
     setKeyA(keyB);
@@ -119,7 +123,8 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
     setIsOpenB(false);
   };
 
-  const handleNavigate = (key: string) => {
+  const handleNavigate = (key?: string) => {
+    if (!key) return;
     if (onSelectPerson) {
       onSelectPerson(key, { reveal: true, center: true });
     }
@@ -130,18 +135,25 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
 
   const handleCopyKinshipSummary = () => {
     if (!kinshipResult || !personA || !personB) return;
-    let text = `صلة النسب والقرابة: «${personA.name}» هو «${kinshipResult.relationshipTitle}» لـ «${personB.name}».\n`;
-    text += `• النسب من جهة الأب (العصبة): ${kinshipResult.narrativeExplanation} (الجد المشترك: ${kinshipResult.commonAncestor?.name || 'غير محدد'}).\n`;
-    if (!isPrivacyRestricted && kinshipResult.maternalKinship.hasMaternalRelation) {
-      text += `• النسب من جهة الأم (الأخوال): ${kinshipResult.maternalKinship.maternalExplanation}\n`;
+    const lines: string[] = [];
+    lines.push(`صلة النسب والقرابة: «${kinshipResult.personADisplayName}» هو «${kinshipResult.relationshipTitle}» لـ «${kinshipResult.personBDisplayName}».`);
+    lines.push(`• الجد المشترك: ${kinshipResult.paternalAnalysis.commonAncestorConciseLine}`);
+    if (kinshipResult.paternalAnalysis.branchingPointConciseLine) {
+      lines.push(`• نقطة التفرع: ${kinshipResult.paternalAnalysis.branchingPointConciseLine}`);
     }
-    if (!isPrivacyRestricted && kinshipResult.inLawKinship.hasInLawRelation) {
-      text += `• صلة المصاهرة ونسب الزوجة: ${kinshipResult.inLawKinship.spousalExplanation || kinshipResult.inLawKinship.spousalTitle}\n`;
+    if (kinshipResult.maternalKinship.hasMaternalRelation) {
+      lines.push(`• نسب الأمهات: ${kinshipResult.maternalKinship.maternalConciseSummary}`);
     }
-    text += `(شجرة عائلة الفردان الكرزكاني)`;
+    if (kinshipResult.crossAndGrandmothersKinship.hasCrossOrGrandmotherRelation) {
+      lines.push(`• التقاطع والجدات: ${kinshipResult.crossAndGrandmothersKinship.summaryExplanation}`);
+    }
+    if (kinshipResult.inLawKinship.hasInLawRelation) {
+      lines.push(`• المصاهرة: ${kinshipResult.inLawKinship.spousalExplanation}`);
+    }
+    lines.push(`(شجرة عائلة الفردان الكرزكاني)`);
 
     try {
-      navigator.clipboard.writeText(text);
+      navigator.clipboard.writeText(lines.join('\n'));
       setCopiedSummary(true);
       setTimeout(() => setCopiedSummary(false), 2400);
     } catch (_) {}
@@ -158,17 +170,20 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
     }
 
     window.speechSynthesis.cancel();
-    let spoken = `صلة النسب والقرابة: ${personA.name} هو ${kinshipResult.relationshipTitle} لـ ${personB.name}. ${kinshipResult.narrativeExplanation}`;
-    if (!isPrivacyRestricted && kinshipResult.maternalKinship.hasMaternalRelation) {
-      spoken += ` ومن جهة الأم والأخوال: ${kinshipResult.maternalKinship.maternalExplanation}`;
+    let spoken = `صلة النسب والقرابة: ${kinshipResult.personADisplayName} هو ${kinshipResult.relationshipTitle} لـ ${kinshipResult.personBDisplayName}. ${kinshipResult.narrativeExplanation}`;
+    if (kinshipResult.paternalAnalysis.branchingPointConciseLine) {
+      spoken += ` ${kinshipResult.paternalAnalysis.branchingPointConciseLine}`;
     }
-    if (!isPrivacyRestricted && kinshipResult.inLawKinship.hasInLawRelation) {
-      spoken += ` ومن جهة المصاهرة: ${kinshipResult.inLawKinship.spousalExplanation || kinshipResult.inLawKinship.spousalTitle}.`;
+    if (kinshipResult.maternalKinship.hasMaternalRelation) {
+      spoken += ` ومن جهة الأمهات: ${kinshipResult.maternalKinship.maternalConciseSummary}`;
+    }
+    if (kinshipResult.inLawKinship.hasInLawRelation) {
+      spoken += ` ومن جهة المصاهرة: ${kinshipResult.inLawKinship.spousalExplanation}`;
     }
 
-    const utterance = new SpeechSynthesisUtterance(spoken.replace(/[«»"•]/g, ' '));
+    const utterance = new SpeechSynthesisUtterance(spoken.replace(/[«»"•⬅⟶⟵]/g, ' '));
     utterance.lang = 'ar-SA';
-    utterance.rate = 0.96;
+    utterance.rate = 0.95;
     const voices = window.speechSynthesis.getVoices();
     const arabicVoice = voices.find(v => v.lang.toLowerCase().startsWith('ar'));
     if (arabicVoice) {
@@ -182,12 +197,92 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
     window.speechSynthesis.speak(utterance);
   };
 
-  // Quick preset suggestions
   const handlePreset = (aKey: string, bKey: string) => {
     setKeyA(aKey);
     setKeyB(bKey);
     setQueryA('');
     setQueryB('');
+  };
+
+  const crossLinksList = useMemo(() => {
+    if (!kinshipResult) return [];
+    const list = [];
+    if (kinshipResult.crossAndGrandmothersKinship.paternalAToMaternalB) {
+      list.push(kinshipResult.crossAndGrandmothersKinship.paternalAToMaternalB);
+    }
+    if (kinshipResult.crossAndGrandmothersKinship.maternalAToPaternalB) {
+      list.push(kinshipResult.crossAndGrandmothersKinship.maternalAToPaternalB);
+    }
+    list.push(...kinshipResult.crossAndGrandmothersKinship.grandmotherLinks);
+    return list;
+  }, [kinshipResult]);
+
+  /**
+   * Renders a large, high-contrast dual badge bar above an explanation card:
+   * [🟢 Badge Party 1 (Emerald)]  ⬅ / 🤝  [🟠 Badge Party 2 (Amber)]
+   */
+  const renderDualPartyBadges = (
+    partyABadgeText: string,
+    connector: '⬅' | '🤝' = '⬅',
+    partyBBadgeText: string
+  ) => (
+    <div className="flex flex-wrap items-center gap-2 sm:gap-3 pb-2 border-b border-slate-100">
+      <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-800 text-white font-naskh text-base sm:text-lg font-bold shadow-xs">
+        <span className="text-sm">🟢</span>
+        <span>{partyABadgeText}</span>
+      </span>
+
+      <span className="px-2 py-1 rounded-lg bg-slate-100 text-slate-800 font-black text-lg sm:text-xl select-none">
+        {connector}
+      </span>
+
+      <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-600 text-white font-naskh text-base sm:text-lg font-bold shadow-xs">
+        <span className="text-sm">🟠</span>
+        <span>{partyBBadgeText}</span>
+      </span>
+    </div>
+  );
+
+  /**
+   * Highlights occurrences of «nameA» in emerald and «nameB» in amber inside explanation sentences
+   * so elderly readers can visually connect each name to its colored badge immediately.
+   */
+  const renderHighlightedText = (text: string) => {
+    if (!kinshipResult || !text) return text;
+    const nameA = kinshipResult.personADisplayName;
+    const nameB = kinshipResult.personBDisplayName;
+
+    const tokenA = `«${nameA}»`;
+    const tokenB = `«${nameB}»`;
+
+    if (nameA === nameB) {
+      return <span>{text}</span>;
+    }
+
+    const parts = text.split(/(«[^»]+»)/g);
+    return parts.map((part, idx) => {
+      if (part === tokenA) {
+        return (
+          <span
+            key={idx}
+            className="inline-block px-2 py-0.5 mx-0.5 rounded-lg bg-emerald-100 text-emerald-950 font-extrabold border border-emerald-300"
+          >
+            {nameA}
+          </span>
+        );
+      }
+      if (part === tokenB) {
+        return (
+          <span
+            key={idx}
+            className="inline-block px-2 py-0.5 mx-0.5 rounded-lg bg-amber-100 text-amber-950 font-extrabold border border-amber-300"
+          >
+            {nameB}
+          </span>
+        );
+      }
+      return <React.Fragment key={idx}>{part}</React.Fragment>;
+    });
   };
 
   return (
@@ -248,14 +343,14 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
       {/* Two Inputs & Swap Controls Area */}
       <div className="p-5 sm:p-7 bg-[#fcfdfa] border-b border-slate-200/90 space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-11 gap-4 items-center">
-          {/* Party 1 (الطرف الأول: الشخص المراد معرفة نسبه) */}
+          {/* Party 1 */}
           <div className="lg:col-span-5 space-y-2" ref={containerRefA}>
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <label className="text-xs sm:text-sm font-bold text-emerald-950 flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-emerald-800 text-white text-[10px] flex items-center justify-center font-bold">
-                  1
+                  🟢
                 </span>
-                <span>الطرف الأول (المراد معرفة نسبه):</span>
+                <span>الشخص المراد معرفة نسبه:</span>
               </label>
               {personA && (
                 <button
@@ -263,7 +358,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     setKeyA('');
                     setQueryA('');
                   }}
-                  className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                  className="text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                 >
                   إلغاء التحديد
                 </button>
@@ -271,10 +366,9 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
             </div>
 
             {personA ? (
-              // Selected Person A Card
-              <div className="p-3.5 bg-emerald-50/70 border-2 border-emerald-600/40 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">
+              <div className="p-3.5 bg-emerald-50/80 border-2 border-emerald-600/50 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-11 h-11 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0 overflow-hidden">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0 overflow-hidden">
                     <MemberAvatar
                       src={personA.photo}
                       personKey={personA.key}
@@ -284,20 +378,15 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     />
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-sm font-bold font-['Alexandria'] text-emerald-950 truncate">
-                      {personA.name}
+                    <h4 className="font-naskh text-lg sm:text-xl font-bold text-emerald-950 truncate">
+                      {formatPersonDisplayName(personA, registry.people, isPrivacyRestricted)}
                     </h4>
-                    <p className="text-xs font-semibold text-emerald-900 truncate mt-0.5">
+                    <p className="font-naskh text-sm font-semibold text-emerald-900 truncate">
                       {getQuadLineageName(personA.key, registry.people, 4)}
                     </p>
-                    <p className="text-[11px] text-emerald-800 mt-0.5">
+                    <p className="text-xs text-emerald-800 mt-0.5">
                       الجيل {personA.generation} · {personA.branchName || 'فرع العائلة'}
                     </p>
-                    {!isPrivacyRestricted && personA.mother && (
-                      <p className="text-[10px] text-rose-800 truncate mt-0.5">
-                        الوالدة: {personA.mother.name} ({personA.mother.isFromFamily ? 'آل فردان' : personA.mother.familyOrigin || 'خارج العائلة'})
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -306,13 +395,12 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     setKeyA('');
                     setQueryA('');
                   }}
-                  className="px-2.5 py-1 text-xs font-bold text-emerald-800 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
+                  className="px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100 rounded-lg transition-colors cursor-pointer"
                 >
                   تغيير
                 </button>
               </div>
             ) : (
-              // Search Input A
               <div className="relative">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
@@ -324,8 +412,8 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                       setIsOpenA(true);
                     }}
                     onFocus={() => setIsOpenA(true)}
-                    placeholder="ابحث بالاسم أو الأحرف الأولى للطرف الأول..."
-                    className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 rounded-2xl text-xs text-slate-900 placeholder-slate-400 outline-none transition-all shadow-xs"
+                    placeholder="ابحث بالاسم في الخانة الأولى..."
+                    className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 rounded-2xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 outline-none transition-all shadow-xs"
                   />
                   {queryA && (
                     <button
@@ -340,7 +428,6 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                   )}
                 </div>
 
-                {/* Dropdown A */}
                 {isOpenA && queryA.trim().length > 0 && (
                   <div className="absolute top-full right-0 left-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-64 overflow-y-auto z-40 p-1 divide-y divide-slate-100 animate-in fade-in">
                     {resultsA.length === 0 ? (
@@ -366,7 +453,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                                 {getArabicInitial(person.name)}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-900 truncate">
+                                <p className="font-naskh text-sm font-bold text-slate-900 group-hover:text-emerald-900 truncate">
                                   {quadName || person.name}
                                 </p>
                                 <p className="text-[10px] text-slate-500 truncate mt-0.5">
@@ -390,27 +477,27 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
             )}
           </div>
 
-          {/* Swap Button (التبديل بين الطرفين) */}
+          {/* Swap Button */}
           <div className="lg:col-span-1 flex items-center justify-center pt-2 lg:pt-5">
             <button
               onClick={handleSwap}
               disabled={!keyA && !keyB}
               className="p-3 bg-white hover:bg-emerald-50 active:scale-95 text-emerald-800 disabled:opacity-40 disabled:pointer-events-none rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1 group"
-              title="تبديل الطرفين"
+              title="تبديل الاسمين"
             >
               <ArrowRightLeft className="w-4 h-4 group-hover:rotate-180 transition-transform duration-300" />
-              <span className="lg:hidden text-xs font-bold">تبديل الطرفين</span>
+              <span className="lg:hidden text-xs font-bold">تبديل الاسمين</span>
             </button>
           </div>
 
-          {/* Party 2 (الطرف الثاني: الشخص المقارن به) */}
+          {/* Party 2 */}
           <div className="lg:col-span-5 space-y-2" ref={containerRefB}>
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <label className="text-xs sm:text-sm font-bold text-amber-950 flex items-center gap-1.5">
                 <span className="w-5 h-5 rounded-full bg-amber-600 text-white text-[10px] flex items-center justify-center font-bold">
-                  2
+                  🟠
                 </span>
-                <span>الطرف الثاني (المقارن به):</span>
+                <span>الشخص المقارن به:</span>
               </label>
               {personB && (
                 <button
@@ -418,7 +505,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     setKeyB('');
                     setQueryB('');
                   }}
-                  className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                  className="text-xs text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                 >
                   إلغاء التحديد
                 </button>
@@ -426,10 +513,9 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
             </div>
 
             {personB ? (
-              // Selected Person B Card
-              <div className="p-3.5 bg-amber-50/70 border-2 border-amber-600/40 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">
+              <div className="p-3.5 bg-amber-50/80 border-2 border-amber-600/50 rounded-2xl flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-11 h-11 rounded-xl bg-amber-700 text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0 overflow-hidden">
+                  <div className="w-12 h-12 rounded-xl bg-amber-700 text-white flex items-center justify-center font-bold text-sm shadow-xs flex-shrink-0 overflow-hidden">
                     <MemberAvatar
                       src={personB.photo}
                       personKey={personB.key}
@@ -439,20 +525,15 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     />
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-sm font-bold font-['Alexandria'] text-amber-950 truncate">
-                      {personB.name}
+                    <h4 className="font-naskh text-lg sm:text-xl font-bold text-amber-950 truncate">
+                      {formatPersonDisplayName(personB, registry.people, isPrivacyRestricted)}
                     </h4>
-                    <p className="text-xs font-semibold text-amber-950 truncate mt-0.5">
+                    <p className="font-naskh text-sm font-semibold text-amber-950 truncate">
                       {getQuadLineageName(personB.key, registry.people, 4)}
                     </p>
-                    <p className="text-[11px] text-amber-800 mt-0.5">
+                    <p className="text-xs text-amber-800 mt-0.5">
                       الجيل {personB.generation} · {personB.branchName || 'فرع العائلة'}
                     </p>
-                    {!isPrivacyRestricted && personB.mother && (
-                      <p className="text-[10px] text-rose-800 truncate mt-0.5">
-                        الوالدة: {personB.mother.name} ({personB.mother.isFromFamily ? 'آل فردان' : personB.mother.familyOrigin || 'خارج العائلة'})
-                      </p>
-                    )}
                   </div>
                 </div>
 
@@ -461,13 +542,12 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     setKeyB('');
                     setQueryB('');
                   }}
-                  className="px-2.5 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
+                  className="px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer"
                 >
                   تغيير
                 </button>
               </div>
             ) : (
-              // Search Input B
               <div className="relative">
                 <div className="relative">
                   <Search className="w-4 h-4 absolute right-3.5 top-3 text-slate-400 pointer-events-none" />
@@ -479,8 +559,8 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                       setIsOpenB(true);
                     }}
                     onFocus={() => setIsOpenB(true)}
-                    placeholder="ابحث بالاسم أو الأحرف الأولى للطرف الثاني..."
-                    className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 rounded-2xl text-xs text-slate-900 placeholder-slate-400 outline-none transition-all shadow-xs"
+                    placeholder="ابحث بالاسم في الخانة الثانية..."
+                    className="w-full pr-10 pl-8 py-2.5 bg-white border border-slate-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 rounded-2xl text-xs sm:text-sm text-slate-900 placeholder-slate-400 outline-none transition-all shadow-xs"
                   />
                   {queryB && (
                     <button
@@ -495,7 +575,6 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                   )}
                 </div>
 
-                {/* Dropdown B */}
                 {isOpenB && queryB.trim().length > 0 && (
                   <div className="absolute top-full right-0 left-0 mt-1.5 bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-64 overflow-y-auto z-40 p-1 divide-y divide-slate-100 animate-in fade-in">
                     {resultsB.length === 0 ? (
@@ -521,7 +600,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                                 {getArabicInitial(person.name)}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-bold text-slate-900 group-hover:text-amber-900 truncate">
+                                <p className="font-naskh text-sm font-bold text-slate-900 group-hover:text-amber-900 truncate">
                                   {quadName || person.name}
                                 </p>
                                 <p className="text-[10px] text-slate-500 truncate mt-0.5">
@@ -547,75 +626,41 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
         </div>
       </div>
 
-      {/* Results Area (النتيجة في خانة أسفل تشرح نسبه) */}
+      {/* Results Area */}
       <div className="p-5 sm:p-7">
         {!personA || !personB ? (
-          // Empty Prompt
           <div className="text-center py-10 px-4 space-y-3">
             <div className="w-14 h-14 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-2xl mx-auto flex items-center justify-center">
               <GitMerge className="w-7 h-7 text-emerald-700" />
             </div>
-            <h4 className="text-base font-bold font-['Alexandria'] text-slate-800">
+            <h4 className="text-base sm:text-lg font-bold font-['Alexandria'] text-slate-800">
               يرجى اختيار الشخصين أعلاه لعرض نتيجة التحليل
             </h4>
-            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-              اختر اسماً في الخانة الأولى (المراد معرفة نسبه) واسماً في الخانة الثانية لمعرفة درجة القرابة وتفاصيل عمود النسب من جهة الأب، ونسب الأم، وصلة المصاهرة.
+            <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+              اختر اسماً في الخانة الأولى واسماً في الخانة الثانية لمعرفة درجة القرابة وتفاصيل عمود النسب من جهة الأب، ونسب الأم، وصلة المصاهرة.
             </p>
           </div>
         ) : kinshipResult ? (
-          // Full Detailed Kinship Report
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            {/* Top Headline Card (Comprehensive Kinship Verdict) */}
-            <div className="bg-gradient-to-br from-emerald-50 via-white to-amber-50/50 border-2 border-emerald-600/40 rounded-3xl p-5 sm:p-7 shadow-md relative overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="px-3 py-1 bg-emerald-800 text-white rounded-full text-xs font-bold shadow-2xs">
-                      خلاصة صلة القرابة الشاملة
-                    </span>
-                    {kinshipResult.isSameBranch ? (
-                      <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 rounded-full text-[11px] font-semibold">
-                        من نفس الفرع الأبوي ({kinshipResult.branchNameA})
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[11px] font-semibold">
-                        فرعان أبويان مختلفان
-                      </span>
-                    )}
-                    {!isPrivacyRestricted && kinshipResult.maternalKinship.hasMaternalRelation && (
-                      <span className="px-2.5 py-0.5 bg-rose-100 text-rose-900 rounded-full text-[11px] font-semibold flex items-center gap-1">
-                        <Heart className="w-3 h-3 text-rose-600 fill-rose-600" />
-                        <span>قرابة أرحام (أخوال)</span>
-                      </span>
-                    )}
-                    {!isPrivacyRestricted && kinshipResult.inLawKinship.hasInLawRelation && (
-                      <span className="px-2.5 py-0.5 bg-amber-100 text-amber-900 rounded-full text-[11px] font-semibold flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-amber-600" />
-                        <span>صلة مصاهرة</span>
-                      </span>
-                    )}
-                  </div>
-
-                  <h3 className="text-xl sm:text-2xl font-black font-['Alexandria'] text-slate-900 leading-tight">
-                    <span className="text-emerald-800 font-bold">{personA.name}</span>
-                    <span className="text-slate-500 font-normal text-base sm:text-lg mx-2">هو</span>
-                    <span className="text-amber-700 underline decoration-amber-400 decoration-2 underline-offset-4">
-                      {kinshipResult.relationshipTitle}
-                    </span>
-                    <span className="text-slate-500 font-normal text-base sm:text-lg mx-2">لـ</span>
-                    <span className="text-emerald-800 font-bold">{personB.name}</span>
-                  </h3>
-
-                  <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium pt-1">
-                    {kinshipResult.narrativeExplanation}
-                  </p>
+            {/* ========================================================================= */}
+            {/* 1. DEFAULT PRIMARY CARD (البطاقة الأساسية العلوية مع العناوين البارزة وخط النسخ) */}
+            {/* ========================================================================= */}
+            <div className="bg-gradient-to-br from-emerald-50/90 via-white to-amber-50/50 border-2 border-emerald-700/40 rounded-3xl p-5 sm:p-7 shadow-md space-y-6">
+              {/* Top Section Header Bar: 🟢 النسب من جهة الأب (الأعمام والعصبة) + Action Buttons */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b-2 border-emerald-700/20 pb-4">
+                <div className="inline-flex items-center gap-2.5 px-4 py-2.5 bg-gradient-to-r from-emerald-800 to-emerald-950 text-white rounded-2xl shadow-sm border border-emerald-600/40">
+                  <span className="text-lg">🟢</span>
+                  <Users className="w-5 h-5 text-emerald-300 flex-shrink-0" />
+                  <span className="font-naskh text-lg sm:text-xl font-bold tracking-wide">
+                    النسب من جهة الأب (الأعمام والعصبة)
+                  </span>
                 </div>
 
                 {/* Listen & Copy Summary Buttons */}
                 <div className="flex-shrink-0 flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleSpeakKinshipSummary}
-                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold shadow-2xs transition-all active:scale-95 cursor-pointer ${
                       isSpeakingKinship
                         ? 'bg-rose-600 hover:bg-rose-700 text-white'
                         : 'bg-amber-400 hover:bg-amber-300 text-slate-950'
@@ -624,12 +669,12 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                   >
                     {isSpeakingKinship ? (
                       <>
-                        <VolumeX className="w-3.5 h-3.5" />
+                        <VolumeX className="w-4 h-4" />
                         <span>إيقاف الصوت</span>
                       </>
                     ) : (
                       <>
-                        <Volume2 className="w-3.5 h-3.5" />
+                        <Volume2 className="w-4 h-4" />
                         <span>استماع بالصوت 🔊</span>
                       </>
                     )}
@@ -637,541 +682,774 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
 
                   <button
                     onClick={handleCopyKinshipSummary}
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
-                    title="نسخ تقرير صلة القرابة الكامل"
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs sm:text-sm font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+                    title="نسخ خلاصة صلة القرابة"
                   >
                     {copiedSummary ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <Check className="w-4 h-4 text-emerald-600" />
                         <span className="text-emerald-700">تم النسخ</span>
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3.5 h-3.5 text-slate-500" />
+                        <Copy className="w-4 h-4 text-slate-500" />
                         <span>نسخ الخلاصة</span>
                       </>
                     )}
                   </button>
                 </div>
               </div>
-            </div>
 
-            {/* Filter Tabs between Perspectives */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
-              <button
-                onClick={() => setActivePerspective('all')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activePerspective === 'all'
-                    ? 'bg-emerald-800 text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>عرض شامل لكل الجهات</span>
-              </button>
+              {/* Main Paternal Kinship Headline & Explanation in Clear Naskh Font */}
+              <div className="space-y-3">
+                <h3 className="font-naskh text-2xl sm:text-4xl font-bold text-slate-900">
+                  <span className="inline-block px-3 py-0.5 rounded-xl bg-emerald-100/90 text-emerald-900 border border-emerald-300 font-bold">
+                    {kinshipResult.personADisplayName}
+                  </span>
+                  <span className="text-slate-600 font-normal text-xl sm:text-2xl mx-2.5">هو</span>
+                  <span className="text-amber-800 underline decoration-amber-400 decoration-2 underline-offset-8 font-extrabold">
+                    {kinshipResult.relationshipTitle}
+                  </span>
+                  <span className="text-slate-600 font-normal text-xl sm:text-2xl mx-2.5">لـ</span>
+                  <span className="inline-block px-3 py-0.5 rounded-xl bg-amber-100/90 text-amber-950 border border-amber-300 font-bold">
+                    {kinshipResult.personBDisplayName}
+                  </span>
+                </h3>
 
-              <button
-                onClick={() => setActivePerspective('paternal')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activePerspective === 'paternal'
-                    ? 'bg-emerald-800 text-white shadow-xs'
-                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                }`}
-              >
-                <Users className="w-3.5 h-3.5 text-emerald-600" />
-                <span>النسب من جهة الأب (العصبة)</span>
-              </button>
+                <p className="font-naskh text-lg sm:text-xl text-slate-800 font-semibold">
+                  {renderHighlightedText(kinshipResult.narrativeExplanation)}
+                </p>
+              </div>
 
-              {!isPrivacyRestricted && (
-                <>
-                  <button
-                    onClick={() => setActivePerspective('maternal')}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      activePerspective === 'maternal'
-                        ? 'bg-rose-800 text-white shadow-xs'
-                        : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
-                    }`}
-                  >
-                    <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
-                    <span>النسب من جهة الأم (الأخوال)</span>
-                    {kinshipResult.maternalKinship.hasMaternalRelation && (
-                      <span className="w-2 h-2 rounded-full bg-rose-500" />
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setActivePerspective('inlaw')}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      activePerspective === 'inlaw'
-                        ? 'bg-amber-800 text-white shadow-xs'
-                        : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
-                    }`}
-                  >
-                    <Award className="w-3.5 h-3.5 text-amber-600" />
-                    <span>صلة المصاهرة ونسب الزوجة</span>
-                    {kinshipResult.inLawKinship.hasInLawRelation && (
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* ========================================================================= */}
-            {/* 1. PATERNAL KINSHIP SECTION (النسب من جهة الأب) */}
-            {/* ========================================================================= */}
-            {(activePerspective === 'all' || activePerspective === 'paternal') && (
-              <div className="space-y-4 pt-2">
-                <div className="flex items-center gap-2 border-r-4 border-emerald-800 pr-3">
-                  <Users className="w-5 h-5 text-emerald-800" />
-                  <h4 className="text-base font-extrabold font-['Alexandria'] text-slate-900">
-                    أولاً: النسب من جهة الأب (العصبة والعمومة)
-                  </h4>
-                </div>
-
-                {/* Common Ancestor Highlight Card */}
-                {kinshipResult.commonAncestor && (
-                  <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold text-lg shadow-sm flex-shrink-0">
-                        <Sparkles className="w-6 h-6 text-amber-950" />
-                      </div>
-                      <div>
-                        <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider block">
-                          الجد الأبوي المشترك الأقرب (نقطة التقاء النسب)
-                        </span>
-                        <h4 className="text-base font-bold font-['Alexandria'] text-slate-900 mt-0.5">
-                          {kinshipResult.commonAncestor.name}
-                        </h4>
-                        <p className="text-xs text-slate-600 mt-0.5">
-                          الجيل {kinshipResult.commonAncestor.generation} · يلتقي عنده عمود نسب الآباء للطرفين
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => handleNavigate(kinshipResult.commonAncestor!.key)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-amber-200/80 hover:bg-amber-300 text-amber-950 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      <span>عرض الجد في الشجرة</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-
-                {/* Visual Lineage Chain (عمود النسب الصاعد والهابط) */}
-                {kinshipResult.fullLineageChain.length > 0 && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h5 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wider">
-                        <GitMerge className="w-4 h-4 text-emerald-700" />
-                        <span>مسار عمود النسب الأبوي التتابعي بين الطرفين</span>
-                      </h5>
-                      <span className="text-[11px] text-slate-400">
-                        اضغط على أي اسم للانتقال إليه
+              {/* Compact Visual Paternal Path */}
+              {kinshipResult.fullLineageChain.length > 0 && (
+                <div className="space-y-2.5 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-naskh text-base sm:text-lg font-bold text-emerald-950 flex items-center gap-1.5">
+                      <GitMerge className="w-4 h-4 text-emerald-700" />
+                      <span>
+                        مسار عمود النسب الأبوي بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}»:
                       </span>
-                    </div>
+                    </span>
+                    <span className="text-xs text-slate-500">اضغط على أي اسم للانتقال إليه</span>
+                  </div>
 
-                    {/* Horizontal Flow Chart */}
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl overflow-x-auto touch-pan-y overscroll-x-contain">
-                      <div className="flex items-center gap-2 min-w-max py-2 px-1">
-                        {/* Node A */}
-                        <button
-                          onClick={() => handleNavigate(personA.key)}
-                          className="p-3 bg-emerald-800 text-white rounded-2xl text-right shadow-sm hover:bg-emerald-900 transition-all cursor-pointer flex items-center gap-2.5"
-                        >
-                          <div>
-                            <span className="text-[9px] block text-emerald-200 font-bold">الطرف الأول</span>
-                            <span className="text-xs font-bold font-['Alexandria']">{personA.name}</span>
-                            <span className="text-[10px] block text-emerald-300">الجيل {personA.generation}</span>
-                          </div>
-                        </button>
+                  <div className="p-4 bg-white/95 border border-emerald-200 rounded-2xl overflow-x-auto touch-pan-y overscroll-x-contain shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-max py-1 px-1">
+                      {/* Node A */}
+                      <button
+                        onClick={() => handleNavigate(personA.key)}
+                        className="p-3.5 bg-emerald-800 text-white rounded-2xl text-right shadow-sm hover:bg-emerald-900 transition-all cursor-pointer"
+                      >
+                        <span className="text-[11px] block text-emerald-200 font-bold">🟢 {kinshipResult.personADisplayName}</span>
+                        <span className="font-naskh text-base sm:text-lg font-bold block">
+                          {kinshipResult.personADisplayName}
+                        </span>
+                        <span className="text-[11px] block text-emerald-300">الجيل {personA.generation}</span>
+                      </button>
 
-                        {/* Upward chain to LCA */}
-                        {kinshipResult.pathFromAToAncestor.slice(1, -1).map((ancestor, i) => (
-                          <React.Fragment key={`pathA-${ancestor.key}-${i}`}>
-                            <span className="text-emerald-700 font-bold text-sm px-1">⟵</span>
-                            <button
-                              onClick={() => handleNavigate(ancestor.key)}
-                              className="p-2.5 bg-white border border-emerald-300/80 hover:border-emerald-500 text-slate-800 rounded-xl text-right shadow-2xs hover:shadow-xs transition-all cursor-pointer"
-                            >
-                              <span className="text-[9px] block text-slate-400">والد</span>
-                              <span className="text-xs font-bold">{ancestor.name}</span>
-                            </button>
-                          </React.Fragment>
-                        ))}
+                      {/* Upward chain to LCA */}
+                      {kinshipResult.pathFromAToAncestor.slice(1, -1).map((ancestor, i) => (
+                        <React.Fragment key={`main-pathA-${ancestor.key}-${i}`}>
+                          <span className="text-emerald-700 font-bold text-base px-0.5">⟵</span>
+                          <button
+                            onClick={() => handleNavigate(ancestor.key)}
+                            className="p-3 bg-emerald-50/60 border border-emerald-300 hover:border-emerald-600 text-slate-900 rounded-xl text-right shadow-2xs transition-all cursor-pointer"
+                          >
+                            <span className="text-[11px] block text-emerald-800 font-semibold">
+                              {i === 0 ? `والد ${kinshipResult.personADisplayName}` : `جد ${kinshipResult.personADisplayName}`}
+                            </span>
+                            <span className="font-naskh text-base sm:text-lg font-bold block">
+                              {formatPersonDisplayName(ancestor, registry.people, isPrivacyRestricted)}
+                            </span>
+                          </button>
+                        </React.Fragment>
+                      ))}
 
-                        {/* Lowest Common Ancestor (Centered / Highlighted) */}
-                        {kinshipResult.commonAncestor && kinshipResult.personA.key !== kinshipResult.commonAncestor.key && kinshipResult.personB.key !== kinshipResult.commonAncestor.key && (
+                      {/* Lowest Common Ancestor */}
+                      {kinshipResult.commonAncestor &&
+                        kinshipResult.personA.key !== kinshipResult.commonAncestor.key &&
+                        kinshipResult.personB.key !== kinshipResult.commonAncestor.key && (
                           <>
-                            <span className="text-amber-600 font-bold text-base px-1">⟵</span>
+                            <span className="text-amber-600 font-bold text-lg px-0.5">⟵</span>
                             <button
                               onClick={() => handleNavigate(kinshipResult.commonAncestor!.key)}
                               className="p-3.5 bg-amber-500 text-slate-950 font-bold rounded-2xl text-right shadow-md hover:bg-amber-400 transition-all cursor-pointer border-2 border-amber-600"
                             >
-                              <span className="text-[9px] block text-amber-950/80 font-bold">الجد المشترك</span>
-                              <span className="text-xs font-extrabold font-['Alexandria']">{kinshipResult.commonAncestor.name}</span>
-                              <span className="text-[10px] block text-amber-950/70">الجيل {kinshipResult.commonAncestor.generation}</span>
+                              <span className="text-[11px] block text-amber-950/90 font-bold">⭐ الجد المشترك</span>
+                              <span className="font-naskh text-base sm:text-xl font-extrabold block">
+                                {formatPersonDisplayName(kinshipResult.commonAncestor, registry.people, isPrivacyRestricted)}
+                              </span>
+                              <span className="text-[11px] block text-amber-950/80">
+                                الجيل {kinshipResult.commonAncestor.generation}
+                              </span>
                             </button>
-                            <span className="text-amber-600 font-bold text-base px-1">⟶</span>
+                            <span className="text-amber-600 font-bold text-lg px-0.5">⟶</span>
                           </>
                         )}
 
-                        {/* Downward chain from LCA to B */}
-                        {kinshipResult.pathFromBToAncestor.slice(1, -1).reverse().map((ancestor, i) => (
-                          <React.Fragment key={`pathB-${ancestor.key}-${i}`}>
+                      {/* Downward chain from LCA to B */}
+                      {kinshipResult.pathFromBToAncestor
+                        .slice(1, -1)
+                        .reverse()
+                        .map((ancestor, i, arr) => (
+                          <React.Fragment key={`main-pathB-${ancestor.key}-${i}`}>
                             <button
                               onClick={() => handleNavigate(ancestor.key)}
-                              className="p-2.5 bg-white border border-amber-300/80 hover:border-amber-500 text-slate-800 rounded-xl text-right shadow-2xs hover:shadow-xs transition-all cursor-pointer"
+                              className="p-3 bg-amber-50/60 border border-amber-300 hover:border-amber-600 text-slate-900 rounded-xl text-right shadow-2xs transition-all cursor-pointer"
                             >
-                              <span className="text-[9px] block text-slate-400">سلف</span>
-                              <span className="text-xs font-bold">{ancestor.name}</span>
+                              <span className="text-[11px] block text-amber-900 font-semibold">
+                                {i === arr.length - 1 ? `والد ${kinshipResult.personBDisplayName}` : `جد ${kinshipResult.personBDisplayName}`}
+                              </span>
+                              <span className="font-naskh text-base sm:text-lg font-bold block">
+                                {formatPersonDisplayName(ancestor, registry.people, isPrivacyRestricted)}
+                              </span>
                             </button>
-                            <span className="text-amber-700 font-bold text-sm px-1">⟶</span>
+                            <span className="text-amber-700 font-bold text-base px-0.5">⟶</span>
                           </React.Fragment>
                         ))}
 
-                        {/* Node B */}
-                        <button
-                          onClick={() => handleNavigate(personB.key)}
-                          className="p-3 bg-amber-700 text-white rounded-2xl text-right shadow-sm hover:bg-amber-800 transition-all cursor-pointer flex items-center gap-2.5"
-                        >
-                          <div>
-                            <span className="text-[9px] block text-amber-200 font-bold">الطرف الثاني</span>
-                            <span className="text-xs font-bold font-['Alexandria']">{personB.name}</span>
-                            <span className="text-[10px] block text-amber-300">الجيل {personB.generation}</span>
-                          </div>
-                        </button>
-                      </div>
+                      {/* Node B */}
+                      <button
+                        onClick={() => handleNavigate(personB.key)}
+                        className="p-3.5 bg-amber-700 text-white rounded-2xl text-right shadow-sm hover:bg-amber-800 transition-all cursor-pointer"
+                      >
+                        <span className="text-[11px] block text-amber-200 font-bold">🟠 {kinshipResult.personBDisplayName}</span>
+                        <span className="font-naskh text-base sm:text-lg font-bold block">
+                          {kinshipResult.personBDisplayName}
+                        </span>
+                        <span className="text-[11px] block text-amber-300">الجيل {personB.generation}</span>
+                      </button>
                     </div>
                   </div>
-                )}
-
-                {/* Detailed Paternal Metrics */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
-                    <span className="text-[11px] text-slate-500 block font-medium">فارق الأجيال</span>
-                    <p className="text-sm font-bold text-slate-900 mt-0.5">
-                      {kinshipResult.generationDiff === 0
-                        ? 'في نفس الجيل (أقران)'
-                        : kinshipResult.generationDiff > 0
-                        ? `الطرف الأول أصغر بـ ${kinshipResult.generationDiff} ${kinshipResult.generationDiff === 1 ? 'جيل' : 'أجيال'}`
-                        : `الطرف الأول أكبر بـ ${Math.abs(kinshipResult.generationDiff)} ${Math.abs(kinshipResult.generationDiff) === 1 ? 'جيل' : 'أجيال'}`}
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
-                    <span className="text-[11px] text-slate-500 block font-medium">خط النسب الأبوي والفرع</span>
-                    <p className="text-sm font-bold text-slate-900 mt-0.5 truncate">
-                      {kinshipResult.isSameBranch
-                        ? `كلاهما من ${kinshipResult.branchNameA}`
-                        : `${kinshipResult.branchNameA} ↔ ${kinshipResult.branchNameB}`}
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
-                    <span className="text-[11px] text-slate-500 block font-medium">المسافة إلى الجد الأبوي</span>
-                    <p className="text-sm font-bold text-slate-900 mt-0.5">
-                      {kinshipResult.distanceA >= 0
-                        ? `${kinshipResult.distanceA} أجيال (أ) · ${kinshipResult.distanceB} أجيال (ب)`
-                        : 'لا يوجد'}
-                    </p>
-                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* ========================================================================= */}
-            {/* 2. MATERNAL KINSHIP SECTION (النسب من جهة الأم) */}
-            {/* ========================================================================= */}
-            {!isPrivacyRestricted && (activePerspective === 'all' || activePerspective === 'maternal') && (
-              <div className="space-y-4 pt-4 border-t border-slate-200/90">
-                <div className="flex items-center gap-2 border-r-4 border-rose-600 pr-3">
-                  <Heart className="w-5 h-5 text-rose-600 fill-rose-100" />
-                  <h4 className="text-base font-extrabold font-['Alexandria'] text-slate-900">
-                    ثانياً: النسب من جهة الأم (الأخوال والأرحام)
-                  </h4>
-                </div>
-
-                {/* Mothers comparison cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {/* Mother A Card */}
-                  <div className="p-4 bg-rose-50/50 border border-rose-200/90 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-rose-900 flex items-center gap-1">
-                        <span>والدة الطرف الأول:</span>
-                        <span className="font-extrabold text-slate-900">{personA.name}</span>
+              {/* Prominent Maternal Section inside Primary Card: 🔴 النسب من جهة الأم (الأخوال والأرحام) */}
+              {(kinshipResult.maternalKinship.personAMother || kinshipResult.maternalKinship.personBMother) && (
+                <div className="p-5 bg-gradient-to-br from-rose-50/90 via-white to-rose-50/50 border-2 border-rose-300 rounded-3xl shadow-xs space-y-4">
+                  {/* Prominent Header Banner for Maternal Section */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-200 pb-3.5">
+                    <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-gradient-to-r from-rose-700 to-rose-900 text-white rounded-2xl shadow-xs">
+                      <span className="text-lg">🔴</span>
+                      <Heart className="w-5 h-5 text-rose-200 fill-rose-200 flex-shrink-0" />
+                      <span className="font-naskh text-lg sm:text-xl font-bold tracking-wide">
+                        النسب من جهة الأم (الأخوال والأرحام)
                       </span>
-                      {kinshipResult.maternalKinship.personAMother?.isFromFamily ? (
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded-full text-[10px] font-bold">
-                          من آل فردان
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[10px] font-bold">
-                          {kinshipResult.maternalKinship.personAMother?.familyOrigin || 'خارج العائلة'}
-                        </span>
-                      )}
                     </div>
 
-                    {kinshipResult.maternalKinship.personAMother ? (
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h5 className="text-sm font-bold font-['Alexandria'] text-slate-900">
-                            {kinshipResult.maternalKinship.personAMother.name}
-                          </h5>
-                          {kinshipResult.maternalKinship.motherPersonA && (
-                            <button
-                              onClick={() => handleNavigate(kinshipResult.maternalKinship.motherPersonA!.key)}
-                              className="text-xs text-rose-700 hover:text-rose-950 hover:underline flex items-center gap-0.5 font-bold cursor-pointer"
-                              title="عرض بطاقة الوالدة في الشجرة"
-                            >
-                              <span>(عرض في الشجرة)</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                        {kinshipResult.maternalKinship.motherPersonA?.parentKey && (
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            الجد لأم: «{registry.people.get(kinshipResult.maternalKinship.motherPersonA.parentKey)?.name}»
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">
-                        لم يتم توثيق اسم الوالدة في بطاقة الفرد بعد.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Mother B Card */}
-                  <div className="p-4 bg-amber-50/50 border border-amber-200/90 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-amber-900 flex items-center gap-1">
-                        <span>والدة الطرف الثاني:</span>
-                        <span className="font-extrabold text-slate-900">{personB.name}</span>
-                      </span>
-                      {kinshipResult.maternalKinship.personBMother?.isFromFamily ? (
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 rounded-full text-[10px] font-bold">
-                          من آل فردان
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-full text-[10px] font-bold">
-                          {kinshipResult.maternalKinship.personBMother?.familyOrigin || 'خارج العائلة'}
-                        </span>
-                      )}
-                    </div>
-
-                    {kinshipResult.maternalKinship.personBMother ? (
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h5 className="text-sm font-bold font-['Alexandria'] text-slate-900">
-                            {kinshipResult.maternalKinship.personBMother.name}
-                          </h5>
-                          {kinshipResult.maternalKinship.motherPersonB && (
-                            <button
-                              onClick={() => handleNavigate(kinshipResult.maternalKinship.motherPersonB!.key)}
-                              className="text-xs text-amber-800 hover:text-amber-950 hover:underline flex items-center gap-0.5 font-bold cursor-pointer"
-                              title="عرض بطاقة الوالدة في الشجرة"
-                            >
-                              <span>(عرض في الشجرة)</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
-                          )}
-                        </div>
-                        {kinshipResult.maternalKinship.motherPersonB?.parentKey && (
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            الجد لأم: «{registry.people.get(kinshipResult.maternalKinship.motherPersonB.parentKey)?.name}»
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 italic">
-                        لم يتم توثيق اسم الوالدة في بطاقة الفرد بعد.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Maternal Kinship Result Analysis */}
-                {kinshipResult.maternalKinship.hasMaternalRelation ? (
-                  <div className="p-4 sm:p-5 bg-gradient-to-br from-rose-50/80 via-white to-rose-50/40 border-2 border-rose-300 rounded-2xl shadow-xs space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <span className="px-2.5 py-0.5 bg-rose-700 text-white rounded-full text-[11px] font-bold">
-                          صلة القرابة من جهة الأم
-                        </span>
-                        <h4 className="text-base font-bold font-['Alexandria'] text-rose-950 pt-1">
-                          {kinshipResult.maternalKinship.maternalTitle}
-                        </h4>
-                        <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
-                          {kinshipResult.maternalKinship.maternalExplanation}
-                        </p>
-                      </div>
-
-                      {kinshipResult.maternalKinship.maternalCommonAncestor && (
+                    {kinshipResult.maternalKinship.maternalCommonAncestor &&
+                      (!isPrivacyRestricted || kinshipResult.maternalKinship.maternalCommonAncestor.gender !== 'f') && (
                         <button
                           onClick={() => handleNavigate(kinshipResult.maternalKinship.maternalCommonAncestor!.key)}
-                          className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-900 rounded-xl text-xs font-bold transition-colors flex items-center gap-1 flex-shrink-0 cursor-pointer"
+                          className="px-3.5 py-2 bg-rose-100 hover:bg-rose-200 text-rose-950 border border-rose-300 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 cursor-pointer"
                         >
-                          <span>عرض الجد لأم</span>
+                          <span>
+                            الجد المشترك للأمهات:{' '}
+                            {formatPersonDisplayName(
+                              kinshipResult.maternalKinship.maternalCommonAncestor,
+                              registry.people,
+                              isPrivacyRestricted
+                            )}
+                          </span>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </button>
                       )}
+                  </div>
+
+                  {/* Organized & Spread-Out Maternal Details in Clear Naskh Font */}
+                  <div className="space-y-3">
+                    <p className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                      {renderHighlightedText(kinshipResult.maternalKinship.maternalConciseSummary)}
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                      <div className="p-3.5 bg-emerald-50/60 border border-emerald-200 rounded-2xl">
+                        <span className="font-naskh text-sm sm:text-base font-bold text-emerald-900 block">
+                          🟢 والدة {kinshipResult.personADisplayName}:
+                        </span>
+                        <span className="font-naskh text-base sm:text-lg font-bold text-slate-900 block mt-0.5">
+                          {kinshipResult.maternalKinship.motherADisplayName}
+                          {kinshipResult.maternalKinship.motherAConcise && (
+                            <span className="text-sm sm:text-base font-semibold text-slate-600 mr-1.5">
+                              ({kinshipResult.maternalKinship.motherAConcise.shortLineage})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 bg-amber-50/60 border border-amber-200 rounded-2xl">
+                        <span className="font-naskh text-sm sm:text-base font-bold text-amber-900 block">
+                          🟠 والدة {kinshipResult.personBDisplayName}:
+                        </span>
+                        <span className="font-naskh text-base sm:text-lg font-bold text-slate-900 block mt-0.5">
+                          {kinshipResult.maternalKinship.motherBDisplayName}
+                          {kinshipResult.maternalKinship.motherBConcise && (
+                            <span className="text-sm sm:text-base font-semibold text-slate-600 mr-1.5">
+                              ({kinshipResult.maternalKinship.motherBConcise.shortLineage})
+                            </span>
+                          )}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 leading-relaxed flex items-center gap-3">
-                    <BookOpen className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                    <div>
-                      <p className="font-bold text-slate-800">
-                        تحليل النسب من جهة الأمهات:
-                      </p>
-                      <p className="mt-0.5">
-                        {kinshipResult.maternalKinship.personAMother && kinshipResult.maternalKinship.personBMother
-                          ? `لم يُرصد التقاء مباشر لعمود نسب والدة «${personA.name}» مع والدة «${personB.name}» في المشجر، والارتباط الثابت بينهما هو النسب والعمومة الأبوية المبينة أعلاه.`
-                          : 'يمكن توثيق أسماء الأمهات عبر بطاقة كل فرد (خانة تعديل الوالدة) ليقوم النظام تلقائياً بربط وتحليل صلة الأخوال والأرحام بدقة.'}
-                      </p>
-                    </div>
-                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ========================================================================= */}
+            {/* 2. FOUR COLLAPSIBLE BUTTONS (أزرار أطراف النسب الأربعة - مغلقة افتراضياً) */}
+            {/* ========================================================================= */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                  اضغط على أي طرف لعرض تفاصيل النسب القيمة والمختصرة:
+                </h4>
+                {activePerspective !== null && (
+                  <button
+                    onClick={() => setActivePerspective(null)}
+                    className="text-xs sm:text-sm font-bold text-slate-500 hover:text-rose-600 cursor-pointer"
+                  >
+                    إغلاق القسم المفتوح ✕
+                  </button>
                 )}
               </div>
-            )}
 
-            {/* ========================================================================= */}
-            {/* 3. IN-LAW & SPOUSAL SECTION (المصاهرة ونسب الزوجة) */}
-            {/* ========================================================================= */}
-            {!isPrivacyRestricted && (activePerspective === 'all' || activePerspective === 'inlaw') && (
-              <div className="space-y-4 pt-4 border-t border-slate-200/90">
-                <div className="flex items-center gap-2 border-r-4 border-amber-600 pr-3">
-                  <Award className="w-5 h-5 text-amber-600" />
-                  <h4 className="text-base font-extrabold font-['Alexandria'] text-slate-900">
-                    ثالثاً: صلة المصاهرة ونسب الزوجة (الأصهار والعدلاء)
-                  </h4>
-                </div>
-
-                {/* In-Law Result Box if relation exists */}
-                {kinshipResult.inLawKinship.hasInLawRelation ? (
-                  <div className="p-4 sm:p-5 bg-gradient-to-br from-amber-50/90 via-white to-amber-50/40 border-2 border-amber-300 rounded-2xl shadow-xs space-y-3">
-                    <div className="space-y-1">
-                      <span className="px-2.5 py-0.5 bg-amber-700 text-white rounded-full text-[11px] font-bold">
-                        صلة المصاهرة المباشرة
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* Button 1: 🟢 نسب الآباء والعمومة (أب ⬅ أب) */}
+                <button
+                  type="button"
+                  onClick={() => togglePerspective('paternal')}
+                  className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    activePerspective === 'paternal'
+                      ? 'bg-emerald-800 text-white border-emerald-900 shadow-md scale-[1.01]'
+                      : 'bg-emerald-50/70 hover:bg-emerald-100/80 text-emerald-950 border-emerald-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl flex-shrink-0">🟢</span>
+                    <div className="min-w-0">
+                      <span className="font-naskh text-base sm:text-lg font-bold block">
+                        نسب الآباء والعمومة
                       </span>
-                      <h4 className="text-base font-bold font-['Alexandria'] text-amber-950 pt-1">
-                        {kinshipResult.inLawKinship.spousalTitle}
-                      </h4>
-                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
-                        {kinshipResult.inLawKinship.spousalExplanation}
-                      </p>
+                      <span
+                        className={`font-naskh text-xs sm:text-sm font-bold block mt-0.5 ${
+                          activePerspective === 'paternal' ? 'text-emerald-200' : 'text-emerald-800'
+                        }`}
+                      >
+                        (أب {kinshipResult.personADisplayName} ⬅ أب {kinshipResult.personBDisplayName})
+                      </span>
                     </div>
                   </div>
-                ) : null}
+                  {activePerspective === 'paternal' ? (
+                    <ChevronUp className="w-5 h-5 flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 flex-shrink-0 opacity-70" />
+                  )}
+                </button>
 
-                {/* Spouses List for Party 1 & Party 2 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                  {/* Party 1 Spouses */}
-                  <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-2xl space-y-2">
-                    <span className="text-[11px] font-bold text-slate-800 block">
-                      زوجات الطرف الأول ({personA.name}):
+                {/* Button 2: 🔴 نسب الأمهات والأخوال (أم ⬅ أم) */}
+                <button
+                  type="button"
+                  onClick={() => togglePerspective('maternal')}
+                  className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    activePerspective === 'maternal'
+                      ? 'bg-rose-800 text-white border-rose-900 shadow-md scale-[1.01]'
+                      : 'bg-rose-50/70 hover:bg-rose-100/80 text-rose-950 border-rose-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl flex-shrink-0">🔴</span>
+                    <div className="min-w-0">
+                      <span className="font-naskh text-base sm:text-lg font-bold block">
+                        نسب الأمهات والأخوال
+                      </span>
+                      <span
+                        className={`font-naskh text-xs sm:text-sm font-bold block mt-0.5 ${
+                          activePerspective === 'maternal' ? 'text-rose-200' : 'text-rose-800'
+                        }`}
+                      >
+                        (أم {kinshipResult.personADisplayName} ⬅ أم {kinshipResult.personBDisplayName})
+                      </span>
+                    </div>
+                  </div>
+                  {activePerspective === 'maternal' ? (
+                    <ChevronUp className="w-5 h-5 flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 flex-shrink-0 opacity-70" />
+                  )}
+                </button>
+
+                {/* Button 3: 🟣 تقاطع الأب والأم والجدات */}
+                <button
+                  type="button"
+                  onClick={() => togglePerspective('cross')}
+                  className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    activePerspective === 'cross'
+                      ? 'bg-purple-800 text-white border-purple-900 shadow-md scale-[1.01]'
+                      : 'bg-purple-50/70 hover:bg-purple-100/80 text-purple-950 border-purple-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl flex-shrink-0">🟣</span>
+                    <div className="min-w-0">
+                      <span className="font-naskh text-base sm:text-lg font-bold block">
+                        تقاطع الأب والأم والجدات
+                      </span>
+                      <span
+                        className={`font-naskh text-xs sm:text-sm font-bold block mt-0.5 ${
+                          activePerspective === 'cross' ? 'text-purple-200' : 'text-purple-800'
+                        }`}
+                      >
+                        {crossLinksList.length > 0 ? `(${crossLinksList.length} صلة مكتشفة)` : '(الجدات والتقاطعات)'}
+                      </span>
+                    </div>
+                  </div>
+                  {activePerspective === 'cross' ? (
+                    <ChevronUp className="w-5 h-5 flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 flex-shrink-0 opacity-70" />
+                  )}
+                </button>
+
+                {/* Button 4: 🟡 المصاهرة والزواج */}
+                <button
+                  type="button"
+                  onClick={() => togglePerspective('inlaw')}
+                  className={`p-4 rounded-2xl border-2 text-right transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                    activePerspective === 'inlaw'
+                      ? 'bg-amber-700 text-white border-amber-800 shadow-md scale-[1.01]'
+                      : 'bg-amber-50/70 hover:bg-amber-100/80 text-amber-950 border-amber-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-xl flex-shrink-0">🟡</span>
+                    <div className="min-w-0">
+                      <span className="font-naskh text-base sm:text-lg font-bold block">
+                        المصاهرة والزواج
+                      </span>
+                      <span
+                        className={`font-naskh text-xs sm:text-sm font-bold block mt-0.5 ${
+                          activePerspective === 'inlaw' ? 'text-amber-100' : 'text-amber-900'
+                        }`}
+                      >
+                        {kinshipResult.inLawKinship.hasInLawRelation ? '• توجد مصاهرة' : '(الأزواج والأصهار)'}
+                      </span>
+                    </div>
+                  </div>
+                  {activePerspective === 'inlaw' ? (
+                    <ChevronUp className="w-5 h-5 flex-shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 flex-shrink-0 opacity-70" />
+                  )}
+                </button>
+              </div>
+
+              {/* Privacy Mode Notice inside opened non-paternal tabs */}
+              {isPrivacyRestricted && activePerspective && activePerspective !== 'paternal' && (
+                <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 font-naskh text-base text-amber-950">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                    <span>
+                      تظهر الأسماء النسائية بصيغة <b>«كريمة [اسم والدها]»</b> للزوار، وتظهر كاملة عند تفعيل زر <b>«أنا من العائلة 🔒»</b>.
                     </span>
-                    {(personA.spouses || []).length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">
-                        لم يتم تسجيل زوجات في بطاقة الفرد.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {personA.spouses!.map(sp => {
-                          const wPerson = sp.personKey ? registry.people.get(sp.personKey) : null;
-                          return (
-                            <div
-                              key={`kin-spA-${sp.id}`}
-                              className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  {wPerson ? (
-                                    <button
-                                      onClick={() => handleNavigate(wPerson.key)}
-                                      className="font-bold text-xs text-emerald-950 hover:underline flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <span>{sp.name}</span>
-                                      <ExternalLink className="w-3 h-3 text-emerald-600" />
-                                    </button>
-                                  ) : (
-                                    <span className="font-bold text-xs text-slate-900">{sp.name}</span>
-                                  )}
-                                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-900 font-semibold border border-emerald-200">
-                                    {sp.isFromFamily ? 'آل فردان' : sp.familyOrigin || 'خارج العائلة'}
-                                  </span>
-                                </div>
-                                {wPerson?.parentKey && (
-                                  <p className="text-[10px] text-slate-500">
-                                    ابنة «{registry.people.get(wPerson.parentKey)?.name}»
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                  </div>
+                  {onUnlockFamilyMode && (
+                    <button
+                      type="button"
+                      onClick={onUnlockFamilyMode}
+                      className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs sm:text-sm font-bold cursor-pointer flex-shrink-0"
+                    >
+                      تفعيل أنا من العائلة 🔒
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* CONTENT 1: 🟢 داخل زر (نسب الآباء والعمومة) */}
+              {/* ========================================================================= */}
+              {activePerspective === 'paternal' && (
+                <div className="bg-emerald-50/40 border-2 border-emerald-600/30 rounded-3xl p-5 sm:p-6 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-emerald-200 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-5 h-5 text-emerald-800" />
+                      <h5 className="font-naskh text-xl sm:text-2xl font-bold text-emerald-950">
+                        تفاصيل نسب الآباء والعمومة بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}»
+                      </h5>
+                    </div>
+                    <button
+                      onClick={() => setActivePerspective(null)}
+                      className="text-xs sm:text-sm font-bold text-emerald-800 hover:text-emerald-950 cursor-pointer"
+                    >
+                      إغلاق ✕
+                    </button>
                   </div>
 
-                  {/* Party 2 Spouses */}
-                  <div className="p-4 bg-slate-50/70 border border-slate-200 rounded-2xl space-y-2">
-                    <span className="text-[11px] font-bold text-slate-800 block">
-                      زوجات الطرف الثاني ({personB.name}):
-                    </span>
-                    {(personB.spouses || []).length === 0 ? (
-                      <p className="text-xs text-slate-400 italic">
-                        لم يتم تسجيل زوجات في بطاقة الفرد.
-                      </p>
-                    ) : (
-                      <div className="space-y-2">
-                        {personB.spouses!.map(sp => {
-                          const wPerson = sp.personKey ? registry.people.get(sp.personKey) : null;
-                          return (
-                            <div
-                              key={`kin-spB-${sp.id}`}
-                              className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  {wPerson ? (
-                                    <button
-                                      onClick={() => handleNavigate(wPerson.key)}
-                                      className="font-bold text-xs text-amber-950 hover:underline flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <span>{sp.name}</span>
-                                      <ExternalLink className="w-3 h-3 text-amber-600" />
-                                    </button>
-                                  ) : (
-                                    <span className="font-bold text-xs text-slate-900">{sp.name}</span>
-                                  )}
-                                  <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-900 font-semibold border border-amber-200">
-                                    {sp.isFromFamily ? 'آل فردان' : sp.familyOrigin || 'خارج العائلة'}
-                                  </span>
-                                </div>
-                                {wPerson?.parentKey && (
-                                  <p className="text-[10px] text-slate-500">
-                                    ابنة «{registry.people.get(wPerson.parentKey)?.name}»
-                                  </p>
+                  {/* Bullet Cards with Dual Colored Badges */}
+                  <div className="space-y-4">
+                    {/* 1. الجد الجامع المشترك */}
+                    <div className="p-5 bg-white border border-emerald-200 rounded-2xl shadow-2xs space-y-3">
+                      {renderDualPartyBadges(
+                        kinshipResult.paternalAnalysis.partyABadge,
+                        '⬅',
+                        kinshipResult.paternalAnalysis.partyBBadge
+                      )}
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                        <div className="space-y-1">
+                          <span className="font-naskh text-sm sm:text-base font-bold text-emerald-800 block">
+                            • الجد الجامع المشترك:
+                          </span>
+                          <p className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                            {renderHighlightedText(kinshipResult.paternalAnalysis.commonAncestorConciseLine)}
+                          </p>
+                        </div>
+                        {kinshipResult.commonAncestor && (
+                          <button
+                            onClick={() => handleNavigate(kinshipResult.commonAncestor!.key)}
+                            className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-950 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+                          >
+                            <span>عرض الجد في الشجرة</span>
+                            <ExternalLink className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. نقطة التفرع الأخوي (أبناء الجد المشترك) */}
+                    {kinshipResult.paternalAnalysis.branchingPointConciseLine && (
+                      <div className="p-5 bg-white border border-emerald-200 rounded-2xl shadow-2xs space-y-2.5">
+                        {kinshipResult.paternalAnalysis.branchingPoint &&
+                          renderDualPartyBadges(
+                            `فرع ${kinshipResult.personADisplayName} (${kinshipResult.paternalAnalysis.branchingPoint.sonADisplayName})`,
+                            '🤝',
+                            `فرع ${kinshipResult.personBDisplayName} (${kinshipResult.paternalAnalysis.branchingPoint.sonBDisplayName})`
+                          )}
+                        <span className="font-naskh text-sm sm:text-base font-bold text-emerald-800 block pt-1">
+                          • نقطة التفرع الأخوي (أبناء الجد المشترك):
+                        </span>
+                        <p className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                          {renderHighlightedText(kinshipResult.paternalAnalysis.branchingPointConciseLine)}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 3. سلسلة النسب الأبوي للطرفين */}
+                    {kinshipResult.paternalAnalysis.visualPath.nodes.length > 0 && (
+                      <div className="p-5 bg-white border border-emerald-200 rounded-2xl shadow-2xs space-y-3">
+                        <span className="font-naskh text-base sm:text-lg font-bold text-emerald-900 block">
+                          • سلسلة النسب الأبوي بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}» حتى الجد المشترك:
+                        </span>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          {kinshipResult.paternalAnalysis.visualPath.nodes.map((node, idx) => {
+                            const highlightIdx = kinshipResult.paternalAnalysis.visualPath.nodes.findIndex(n => n.isHighlight);
+                            const arrow = highlightIdx === -1 || idx <= highlightIdx ? '⟵' : '⟶';
+                            return (
+                              <React.Fragment key={`pat-bullet-node-${idx}`}>
+                                {idx > 0 && (
+                                  <span className="text-emerald-700 font-black text-lg px-0.5">{arrow}</span>
                                 )}
-                              </div>
-                            </div>
-                          );
-                        })}
+                                <button
+                                  type="button"
+                                  onClick={() => node.key && handleNavigate(node.key)}
+                                  className={`px-3.5 py-2.5 rounded-xl text-right border transition-all cursor-pointer ${
+                                    node.isHighlight
+                                      ? 'bg-amber-500 text-slate-950 border-amber-600 font-extrabold shadow-xs'
+                                      : node.isEndpointA
+                                      ? 'bg-emerald-800 text-white border-emerald-900 font-bold'
+                                      : node.isEndpointB
+                                      ? 'bg-amber-700 text-white border-amber-800 font-bold'
+                                      : 'bg-slate-50 hover:bg-emerald-50 text-slate-900 border-slate-200 font-semibold'
+                                  }`}
+                                >
+                                  <span className="text-[11px] block opacity-85">{node.roleLabel}</span>
+                                  <span className="font-naskh text-base sm:text-lg font-bold block">
+                                    {node.displayName}
+                                  </span>
+                                </button>
+                              </React.Fragment>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
+              )}
 
-                {!kinshipResult.inLawKinship.hasInLawRelation && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-500">
-                    لا توجد صلة مصاهرة أو زوجية مسجلة تربط الطرفين بصورة مباشرة في القيود الحالية.
+              {/* ========================================================================= */}
+              {/* CONTENT 2: 🔴 داخل زر (نسب الأمهات والأخوال) */}
+              {/* ========================================================================= */}
+              {activePerspective === 'maternal' && (
+                <div className="bg-rose-50/40 border-2 border-rose-600/30 rounded-3xl p-5 sm:p-6 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-rose-200 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Heart className="w-5 h-5 text-rose-600 fill-rose-200" />
+                      <h5 className="font-naskh text-xl sm:text-2xl font-bold text-rose-950">
+                        تفاصيل نسب الأمهات والأخوال (أم {kinshipResult.personADisplayName} ⬅ أم {kinshipResult.personBDisplayName})
+                      </h5>
+                    </div>
+                    <button
+                      onClick={() => setActivePerspective(null)}
+                      className="text-xs sm:text-sm font-bold text-rose-800 hover:text-rose-950 cursor-pointer"
+                    >
+                      إغلاق ✕
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+
+                  {/* Bullet Cards for Mothers */}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* 1. والدة الشخص الأول باللون الأخضر الزمردي */}
+                      <div className="p-5 bg-white border-2 border-emerald-300 rounded-2xl shadow-2xs space-y-2.5">
+                        <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white font-naskh text-base sm:text-lg font-bold">
+                          <span>🟢</span>
+                          <span>والدة {kinshipResult.personADisplayName}</span>
+                        </span>
+                        {kinshipResult.maternalKinship.motherAConcise ? (
+                          <div className="space-y-1.5 font-naskh text-lg sm:text-xl text-slate-900 pt-1">
+                            <p className="font-bold">
+                              {kinshipResult.maternalKinship.motherAConcise.nameDisplay}{' '}
+                              <span className="text-base sm:text-lg font-semibold text-slate-600">
+                                ({kinshipResult.maternalKinship.motherAConcise.shortLineage})
+                              </span>
+                            </p>
+                            <p className="text-base sm:text-lg text-slate-700">
+                              <span className="font-bold text-emerald-900">الجدة أم الأم:</span>{' '}
+                              {kinshipResult.maternalKinship.motherAConcise.grandmotherName}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="font-naskh text-base text-slate-400">غير مسجلة في بطاقة الفرد بعد.</p>
+                        )}
+                      </div>
+
+                      {/* 2. والدة الشخص الثاني باللون الكهرماني/الذهبي */}
+                      <div className="p-5 bg-white border-2 border-amber-300 rounded-2xl shadow-2xs space-y-2.5">
+                        <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-600 text-white font-naskh text-base sm:text-lg font-bold">
+                          <span>🟠</span>
+                          <span>والدة {kinshipResult.personBDisplayName}</span>
+                        </span>
+                        {kinshipResult.maternalKinship.motherBConcise ? (
+                          <div className="space-y-1.5 font-naskh text-lg sm:text-xl text-slate-900 pt-1">
+                            <p className="font-bold">
+                              {kinshipResult.maternalKinship.motherBConcise.nameDisplay}{' '}
+                              <span className="text-base sm:text-lg font-semibold text-slate-600">
+                                ({kinshipResult.maternalKinship.motherBConcise.shortLineage})
+                              </span>
+                            </p>
+                            <p className="text-base sm:text-lg text-slate-700">
+                              <span className="font-bold text-amber-900">الجدة أم الأم:</span>{' '}
+                              {kinshipResult.maternalKinship.motherBConcise.grandmotherName}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="font-naskh text-base text-slate-400">غير مسجلة في بطاقة الفرد بعد.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. خلاصة قرابة الأمهات مع الشارة المزدوجة الملونة */}
+                    <div className="p-5 bg-white border border-rose-200 rounded-2xl shadow-2xs space-y-3">
+                      {renderDualPartyBadges(
+                        kinshipResult.maternalKinship.partyABadge,
+                        '⬅',
+                        kinshipResult.maternalKinship.partyBBadge
+                      )}
+                      <span className="font-naskh text-sm sm:text-base font-bold text-rose-800 block pt-1">
+                        • خلاصة قرابة الأمهات:
+                      </span>
+                      <p className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                        {renderHighlightedText(kinshipResult.maternalKinship.maternalConciseSummary)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* CONTENT 3: 🟣 داخل زر (تقاطع الأب والأم والجدات) */}
+              {/* ========================================================================= */}
+              {activePerspective === 'cross' && (
+                <div className="bg-purple-50/40 border-2 border-purple-600/30 rounded-3xl p-5 sm:p-6 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-purple-200 pb-3">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="w-5 h-5 text-purple-800" />
+                      <h5 className="font-naskh text-xl sm:text-2xl font-bold text-purple-950">
+                        تفاصيل تقاطع الأب والأم والجدات بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}»
+                      </h5>
+                    </div>
+                    <button
+                      onClick={() => setActivePerspective(null)}
+                      className="text-xs sm:text-sm font-bold text-purple-800 hover:text-purple-950 cursor-pointer"
+                    >
+                      إغلاق ✕
+                    </button>
+                  </div>
+
+                  {/* Independent Single-Line Bullet Cards with Prominent Dual Colored Badges */}
+                  {crossLinksList.length > 0 ? (
+                    <div className="space-y-3.5">
+                      {crossLinksList.map(link => (
+                        <div
+                          key={link.id}
+                          className="p-5 bg-white border border-purple-200 rounded-2xl shadow-2xs space-y-3"
+                        >
+                          {/* Prominent Dual Party Badges Bar */}
+                          {renderDualPartyBadges(link.partyABadge, link.connector, link.partyBBadge)}
+
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                            <p className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                              {renderHighlightedText(link.conciseBullet)}
+                            </p>
+
+                            {link.commonAncestor && (!isPrivacyRestricted || link.commonAncestor.gender !== 'f') && (
+                              <button
+                                onClick={() => handleNavigate(link.commonAncestor!.key)}
+                                className="px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 flex-shrink-0 cursor-pointer"
+                              >
+                                <span>عرض في الشجرة</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-5 bg-white border border-purple-200 rounded-2xl font-naskh text-lg sm:text-xl font-bold text-slate-700">
+                      • {renderHighlightedText(kinshipResult.crossAndGrandmothersKinship.summaryExplanation)}
+                    </div>
+                  )}
+
+                  {/* Concise Summary of Direct Grandmothers with Real Names & Distinct Colors */}
+                  {(kinshipResult.crossAndGrandmothersKinship.grandmothersA.length > 0 ||
+                    kinshipResult.crossAndGrandmothersKinship.grandmothersB.length > 0) && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      <div className="p-4 bg-white border-2 border-emerald-200 rounded-2xl space-y-2">
+                        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-emerald-800 text-white font-naskh text-base font-bold">
+                          <span>🟢</span>
+                          <span>جدات {kinshipResult.personADisplayName}</span>
+                        </span>
+                        {kinshipResult.crossAndGrandmothersKinship.grandmothersA.slice(0, 3).map(gm => (
+                          <p key={gm.id} className="font-naskh text-base sm:text-lg text-slate-800">
+                            • <span className="font-bold text-emerald-950">{gm.roleLabel}:</span> {gm.lineageSummary}
+                          </p>
+                        ))}
+                      </div>
+                      <div className="p-4 bg-white border-2 border-amber-200 rounded-2xl space-y-2">
+                        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-amber-600 text-white font-naskh text-base font-bold">
+                          <span>🟠</span>
+                          <span>جدات {kinshipResult.personBDisplayName}</span>
+                        </span>
+                        {kinshipResult.crossAndGrandmothersKinship.grandmothersB.slice(0, 3).map(gm => (
+                          <p key={gm.id} className="font-naskh text-base sm:text-lg text-slate-800">
+                            • <span className="font-bold text-amber-950">{gm.roleLabel}:</span> {gm.lineageSummary}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ========================================================================= */}
+              {/* CONTENT 4: 🟡 داخل زر (المصاهرة والزواج) */}
+              {/* ========================================================================= */}
+              {activePerspective === 'inlaw' && (
+                <div className="bg-amber-50/40 border-2 border-amber-600/30 rounded-3xl p-5 sm:p-6 space-y-4 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between border-b border-amber-200 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Award className="w-5 h-5 text-amber-700" />
+                      <h5 className="font-naskh text-xl sm:text-2xl font-bold text-amber-950">
+                        تفاصيل المصاهرة والزواج بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}»
+                      </h5>
+                    </div>
+                    <button
+                      onClick={() => setActivePerspective(null)}
+                      className="text-xs sm:text-sm font-bold text-amber-900 hover:text-amber-950 cursor-pointer"
+                    >
+                      إغلاق ✕
+                    </button>
+                  </div>
+
+                  {/* Direct Concise Bullets for In-Law / Marriage Relations with Dual Colored Badges */}
+                  {kinshipResult.inLawKinship.bulletCards.length > 0 ? (
+                    <div className="space-y-3.5">
+                      {kinshipResult.inLawKinship.bulletCards.map(card => (
+                        <div
+                          key={card.id}
+                          className="p-5 bg-white border border-amber-300 rounded-2xl shadow-2xs space-y-3"
+                        >
+                          {renderDualPartyBadges(card.partyABadge, card.connector, card.partyBBadge)}
+                          <p className="font-naskh text-lg sm:text-xl font-bold text-slate-900 pt-1">
+                            {renderHighlightedText(card.text)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-5 bg-white border border-amber-200 rounded-2xl font-naskh text-lg sm:text-xl font-bold text-slate-700">
+                      • لا توجد صلة مصاهرة مباشرة مسجلة بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}» أو فروعهما المباشرة.
+                    </div>
+                  )}
+
+                  {/* Concise Spouses Cards for Person A & Person B with Real Names */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-5 bg-white border-2 border-emerald-200 rounded-2xl space-y-2.5">
+                      <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-800 text-white font-naskh text-base sm:text-lg font-bold">
+                        <span>🟢</span>
+                        <span>زوجات / أزواج {kinshipResult.personADisplayName}</span>
+                      </span>
+                      {(personA.spouses || []).length === 0 ? (
+                        <p className="font-naskh text-base text-slate-400">غير مسجل.</p>
+                      ) : (
+                        <div className="space-y-1.5 pt-1">
+                          {personA.spouses!.map(sp => {
+                            const wPerson = sp.personKey ? registry.people.get(sp.personKey) || null : null;
+                            const spDisp = formatFemaleInfoDisplayName(sp, wPerson, registry.people, isPrivacyRestricted);
+                            return (
+                              <p key={`spA-${sp.id}`} className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                                - {spDisp}{' '}
+                                <span className="text-sm sm:text-base font-semibold text-slate-500">
+                                  ({sp.isFromFamily ? 'من آل فردان' : sp.familyOrigin || 'خارج العائلة'})
+                                </span>
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="p-5 bg-white border-2 border-amber-200 rounded-2xl space-y-2.5">
+                      <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-600 text-white font-naskh text-base sm:text-lg font-bold">
+                        <span>🟠</span>
+                        <span>زوجات / أزواج {kinshipResult.personBDisplayName}</span>
+                      </span>
+                      {(personB.spouses || []).length === 0 ? (
+                        <p className="font-naskh text-base text-slate-400">غير مسجل.</p>
+                      ) : (
+                        <div className="space-y-1.5 pt-1">
+                          {personB.spouses!.map(sp => {
+                            const wPerson = sp.personKey ? registry.people.get(sp.personKey) || null : null;
+                            const spDisp = formatFemaleInfoDisplayName(sp, wPerson, registry.people, isPrivacyRestricted);
+                            return (
+                              <p key={`spB-${sp.id}`} className="font-naskh text-lg sm:text-xl font-bold text-slate-900">
+                                - {spDisp}{' '}
+                                <span className="text-sm sm:text-base font-semibold text-slate-500">
+                                  ({sp.isFromFamily ? 'من آل فردان' : sp.familyOrigin || 'خارج العائلة'})
+                                </span>
+                              </p>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Bottom Direct Action Buttons */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-4 border-t border-slate-200">
@@ -1180,13 +1458,13 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                   onClick={() => handleNavigate(personA.key)}
                   className="px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                 >
-                  الانتقال إلى {personA.name} في الشجرة
+                  الانتقال إلى {kinshipResult.personADisplayName} في الشجرة
                 </button>
                 <button
                   onClick={() => handleNavigate(personB.key)}
                   className="px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                 >
-                  الانتقال إلى {personB.name} في الشجرة
+                  الانتقال إلى {kinshipResult.personBDisplayName} في الشجرة
                 </button>
                 <button
                   onClick={() => {
@@ -1207,7 +1485,9 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                 onClick={handleSwap}
                 className="text-xs font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 cursor-pointer py-1"
               >
-                <span>معرفة نسبة {personB.name} إلى {personA.name} (تبديل ⇄)</span>
+                <span>
+                  معرفة نسبة {kinshipResult.personBDisplayName} إلى {kinshipResult.personADisplayName} (تبديل ⇄)
+                </span>
               </button>
             </div>
           </div>

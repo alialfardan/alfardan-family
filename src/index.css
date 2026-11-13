@@ -18,6 +18,13 @@
   }
 }
 
+/* Authentic Arabic Naskh Typography for clear elderly-friendly reading */
+.font-naskh {
+  font-family: 'Noto Naskh Arabic', 'Amiri', 'Scheherazade New', serif !important;
+  line-height: 1.85 !important;
+  word-spacing: 0.05em;
+}
+
 /* Smooth vertical touch scrolling for Member Details Modal / Drawer & all popups on mobile */
 .member-modal-wrapper {
   max-height: calc(100vh - 80px);

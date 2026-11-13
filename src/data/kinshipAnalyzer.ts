@@ -1,4 +1,92 @@
 import { ProcessedPerson, MotherInfo, SpouseInfo } from '../types/family';
+import { normalizeArabic } from './treeManager';
+
+export interface KinshipPathNode {
+  key?: string;
+  displayName: string;
+  roleLabel: string;
+  generation?: number;
+  gender: 'm' | 'f';
+  isHighlight?: boolean;
+  isEndpointA?: boolean;
+  isEndpointB?: boolean;
+  isMaskedFemale?: boolean;
+}
+
+export interface KinshipVisualPath {
+  id: string;
+  title: string;
+  badge?: string;
+  nodes: KinshipPathNode[];
+}
+
+export interface GrandmotherRecord {
+  id: string;
+  roleLabel: string;
+  throughAncestor: ProcessedPerson;
+  throughDistance: number;
+  side: 'paternal' | 'maternal';
+  motherInfo: MotherInfo;
+  person: ProcessedPerson | null;
+  fatherPerson: ProcessedPerson | null;
+  displayName: string;
+  lineageSummary: string;
+}
+
+export interface CrossOrGrandmotherLink {
+  id: string;
+  category: 'paternal_to_maternal' | 'maternal_to_paternal' | 'shared_grandmother' | 'related_grandmothers' | 'grandmother_to_grandfather';
+  title: string;
+  badge: string;
+  partyABadge: string; // e.g., "أب حسن (محمد)"
+  connector: '⬅' | '🤝';
+  partyBBadge: string; // e.g., "أم علي (فاطمة)"
+  commonAncestor: ProcessedPerson | null;
+  conciseBullet: string;
+  narrative: string;
+  fullChainText: string;
+  visualPath: KinshipVisualPath;
+}
+
+export interface CrossAndGrandmothersKinship {
+  hasCrossOrGrandmotherRelation: boolean;
+  summaryTitle: string;
+  summaryExplanation: string;
+  paternalAToMaternalB: CrossOrGrandmotherLink | null;
+  maternalAToPaternalB: CrossOrGrandmotherLink | null;
+  grandmotherLinks: CrossOrGrandmotherLink[];
+  grandmothersA: GrandmotherRecord[];
+  grandmothersB: GrandmotherRecord[];
+}
+
+export interface PaternalDetailedAnalysis {
+  partyABadge: string; // e.g., "أب حسن (محمد)"
+  partyBBadge: string; // e.g., "أب علي (إبراهيم)"
+  commonAncestorConciseLine: string;
+  commonAncestorNarrative: string;
+  branchingPoint: {
+    ancestor: ProcessedPerson;
+    sonA: ProcessedPerson;
+    sonB: ProcessedPerson;
+    sonADisplayName: string;
+    sonBDisplayName: string;
+  } | null;
+  branchingPointConciseLine: string;
+  branchingPointNarrative: string;
+  unclesAndGrandfathersNarrative: string;
+  fullChainUpA: string;
+  fullChainDownB: string;
+  fullChainNarrative: string;
+  visualPath: KinshipVisualPath;
+}
+
+export interface MaternalPartyConciseCard {
+  nameDisplay: string;
+  shortLineage: string;
+  grandmotherName: string;
+  originBadge: string;
+  personKey?: string;
+}
 
 export interface MaternalKinship {
   hasMaternalRelation: boolean;
@@ -6,22 +94,58 @@ export interface MaternalKinship {
   personBMother: MotherInfo | null;
   motherPersonA: ProcessedPerson | null;
   motherPersonB: ProcessedPerson | null;
+  motherADisplayName: string;
+  motherBDisplayName: string;
+  partyABadge: string; // e.g., "أم حسن (فاطمة)"
+  partyBBadge: string; // e.g., "أم علي (زينب)"
+  motherAConcise: MaternalPartyConciseCard | null;
+  motherBConcise: MaternalPartyConciseCard | null;
+  motherALineageSummary: string;
+  motherBLineageSummary: string;
   maternalTitle: string;
+  maternalConciseSummary: string;
   maternalExplanation: string;
+  detailedNarrativeParagraphs: string[];
   maternalCommonAncestor: ProcessedPerson | null;
+  maternalBranchingPoint: {
+    ancestor: ProcessedPerson;
+    branchA: ProcessedPerson;
+    branchB: ProcessedPerson;
+  } | null;
   maternalPathA: ProcessedPerson[];
   maternalPathB: ProcessedPerson[];
   maternalLineageChain: ProcessedPerson[];
   maternalDistanceA: number;
   maternalDistanceB: number;
+  visualPath: KinshipVisualPath | null;
+}
+
+export interface InLawBulletCard {
+  id: string;
+  partyABadge: string;
+  connector: '⬅' | '🤝';
+  partyBBadge: string;
+  text: string;
 }
 
 export interface InLawDetail {
   spouse: SpouseInfo;
   wifePerson?: ProcessedPerson | null;
-  relationType: 'direct_marriage' | 'wife_is_daughter' | 'wife_is_sister' | 'wife_is_aunt' | 'wife_is_cousin' | 'sister_in_law' | 'external_family' | 'other';
+  spouseDisplayName: string;
+  relationType:
+    | 'direct_marriage'
+    | 'wife_is_daughter'
+    | 'wife_is_sister'
+    | 'wife_is_aunt'
+    | 'wife_is_cousin'
+    | 'sister_in_law'
+    | 'children_intermarriage'
+    | 'siblings_intermarriage'
+    | 'external_family'
+    | 'other';
   title: string;
   explanation: string;
+  visualPath?: KinshipVisualPath;
 }
 
 export interface InLawKinship {
@@ -29,32 +153,202 @@ export interface InLawKinship {
   isDirectSpouse: boolean;
   spousalTitle: string;
   spousalExplanation: string;
+  conciseBullets: string[];
+  bulletCards: InLawBulletCard[];
+  detailedNarratives: string[];
   inLawsA: InLawDetail[];
   inLawsB: InLawDetail[];
-  areBrothersInLaw: boolean; // عدلاء (متزوجان شقيقتين)
+  areBrothersInLaw: boolean;
   brotherInLawExplanation?: string;
+  visualPaths: KinshipVisualPath[];
 }
 
 export interface KinshipResult {
   personA: ProcessedPerson;
   personB: ProcessedPerson;
+  personADisplayName: string;
+  personBDisplayName: string;
   commonAncestor: ProcessedPerson | null;
-  relationshipTitle: string; // e.g. "ابن عم مباشر"
+  relationshipTitle: string;
   relationshipType: 'self' | 'ancestor' | 'descendant' | 'sibling' | 'uncle_aunt' | 'nephew_niece' | 'cousin' | 'distant';
-  narrativeExplanation: string; // detailed natural explanation
-  distanceA: number; // steps from A up to common ancestor
-  distanceB: number; // steps from B up to common ancestor
-  generationDiff: number; // genA - genB
+  narrativeExplanation: string;
+  executiveSummary: string;
+  paternalAnalysis: PaternalDetailedAnalysis;
+  distanceA: number;
+  distanceB: number;
+  generationDiff: number;
   pathFromAToAncestor: ProcessedPerson[];
   pathFromBToAncestor: ProcessedPerson[];
-  fullLineageChain: ProcessedPerson[]; // complete path from A to B via LCA
+  fullLineageChain: ProcessedPerson[];
   isSameBranch: boolean;
   branchNameA: string;
   branchNameB: string;
 
-  // Maternal & Spousal Kinship
   maternalKinship: MaternalKinship;
+  crossAndGrandmothersKinship: CrossAndGrandmothersKinship;
   inLawKinship: InLawKinship;
+  isPrivacyRestricted: boolean;
+}
+
+/**
+ * Formats a person's name according to Privacy Mode rules:
+ * In full family mode (!isPrivacyRestricted): returns explicit name.
+ * In visitor mode (isPrivacyRestricted): males keep explicit name; females become «كريمة [اسم والدها]».
+ */
+export function formatPersonDisplayName(
+  person: ProcessedPerson | null | undefined,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
+): string {
+  if (!person) return 'غير محدد';
+  if (!isPrivacyRestricted || person.gender !== 'f') {
+    return person.name;
+  }
+  if (person.parentKey && people.has(person.parentKey)) {
+    const father = people.get(person.parentKey)!;
+    const grandpa = father.parentKey ? people.get(father.parentKey) : null;
+    if (grandpa && !father.name.includes('بن ')) {
+      return `كريمة ${father.name} بن ${grandpa.name}`;
+    }
+    return `كريمة ${father.name}`;
+  }
+  if (person.name.includes('بنت ')) {
+    const afterBint = person.name.split('بنت ')[1]?.trim();
+    if (afterBint) return `كريمة ${afterBint}`;
+  }
+  return 'كريمة من آل فردان';
+}
+
+/**
+ * Returns distinct display names for Person A and Person B so that if both share the same first name
+ * (e.g. both named "علي"), their father's name is appended ("علي بن حسن" vs "علي بن محمد").
+ */
+export function getDistinctPairNames(
+  personA: ProcessedPerson,
+  personB: ProcessedPerson,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
+): { nameA: string; nameB: string } {
+  let nameA = formatPersonDisplayName(personA, people, isPrivacyRestricted);
+  let nameB = formatPersonDisplayName(personB, people, isPrivacyRestricted);
+
+  if (personA.key !== personB.key && nameA === nameB) {
+    const fatherA = personA.parentKey ? people.get(personA.parentKey) : null;
+    const fatherB = personB.parentKey ? people.get(personB.parentKey) : null;
+    const connA = personA.gender === 'f' ? 'بنت' : 'بن';
+    const connB = personB.gender === 'f' ? 'بنت' : 'بن';
+    if (fatherA && !nameA.includes(' بن ') && !nameA.includes(' بنت ')) {
+      nameA = `${nameA} ${connA} ${formatPersonDisplayName(fatherA, people, isPrivacyRestricted)}`;
+    }
+    if (fatherB && !nameB.includes(' بن ') && !nameB.includes(' بنت ')) {
+      nameB = `${nameB} ${connB} ${formatPersonDisplayName(fatherB, people, isPrivacyRestricted)}`;
+    }
+  }
+
+  return { nameA, nameB };
+}
+
+/**
+ * Formats a MotherInfo or SpouseInfo name according to Privacy Mode rules.
+ */
+export function formatFemaleInfoDisplayName(
+  info: MotherInfo | SpouseInfo | null | undefined,
+  linkedPerson: ProcessedPerson | null | undefined,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
+): string {
+  if (linkedPerson) {
+    return formatPersonDisplayName(linkedPerson, people, isPrivacyRestricted);
+  }
+  if (!info || !info.name) return 'غير مسجلة';
+  if (!isPrivacyRestricted) return info.name;
+
+  if (info.name.includes('بنت ')) {
+    const afterBint = info.name.split('بنت ')[1]?.trim();
+    if (afterBint) return `كريمة ${afterBint}`;
+  }
+  if (info.name.includes('كريمة ')) {
+    return info.name;
+  }
+  if (info.familyOrigin && info.familyOrigin.trim() && info.familyOrigin.trim() !== 'عائلة الفردان') {
+    return `كريمة من ${info.familyOrigin.trim()}`;
+  }
+  if (info.isFromFamily) {
+    return 'كريمة من آل فردان';
+  }
+  return 'كريمة (محفوظة للخصوصية)';
+}
+
+/**
+ * Resolves a MotherInfo to a ProcessedPerson in the tree if possible.
+ */
+export function resolveMotherPerson(
+  mother: MotherInfo | null | undefined,
+  father: ProcessedPerson | null | undefined,
+  people: Map<string, ProcessedPerson>
+): ProcessedPerson | null {
+  if (!mother || !mother.name) return null;
+  if (mother.personKey && people.has(mother.personKey)) {
+    const p = people.get(mother.personKey)!;
+    if (!p.deleted) return p;
+  }
+  const normMotherName = normalizeArabic(mother.name);
+  if (!normMotherName) return null;
+
+  if (father?.spouses) {
+    for (const sp of father.spouses) {
+      if (sp.personKey && people.has(sp.personKey) && normalizeArabic(sp.name) === normMotherName) {
+        const p = people.get(sp.personKey)!;
+        if (!p.deleted) return p;
+      }
+    }
+  }
+
+  if (mother.isFromFamily) {
+    const candidates: ProcessedPerson[] = [];
+    people.forEach(cand => {
+      if (!cand.deleted && cand.gender === 'f' && normalizeArabic(cand.name) === normMotherName) {
+        candidates.push(cand);
+      }
+    });
+    if (candidates.length === 1) {
+      return candidates[0];
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Formats an Arabic generation count phrase (e.g., "جيل واحد", "جيلين", "3 أجيال").
+ */
+export function formatGenerationsCount(count: number): string {
+  const n = Math.abs(count);
+  if (n === 0) return 'نفس الجيل';
+  if (n === 1) return 'جيل واحد';
+  if (n === 2) return 'جيلين';
+  if (n >= 3 && n <= 10) return `${n} أجيال`;
+  return `${n} جيلاً`;
+}
+
+/**
+ * Builds a patronymic lineage string (بن / بنت) from a path [person, parent, grandparent, ...].
+ */
+export function formatPatronymicChain(
+  path: ProcessedPerson[],
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
+): string {
+  if (!path || path.length === 0) return '';
+  return path
+    .map((p, idx) => {
+      const disp = formatPersonDisplayName(p, people, isPrivacyRestricted);
+      if (idx === 0) return disp;
+      const prev = path[idx - 1];
+      const connector = prev.gender === 'f' ? 'بنت' : 'بن';
+      return `${connector} ${disp}`;
+    })
+    .join(' ');
 }
 
 /**
@@ -110,175 +404,397 @@ export function findLowestCommonAncestor(
 }
 
 /**
- * Analyzes maternal relationships between Person A and Person B
+ * Helper to create a KinshipPathNode from a ProcessedPerson
+ */
+function makePersonPathNode(
+  person: ProcessedPerson,
+  roleLabel: string,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean,
+  opts?: { isHighlight?: boolean; isEndpointA?: boolean; isEndpointB?: boolean; customDisplayName?: string }
+): KinshipPathNode {
+  const isMasked = isPrivacyRestricted && person.gender === 'f';
+  return {
+    key: isMasked ? undefined : person.key,
+    displayName: opts?.customDisplayName || formatPersonDisplayName(person, people, isPrivacyRestricted),
+    roleLabel,
+    generation: person.generation,
+    gender: person.gender,
+    isHighlight: opts?.isHighlight,
+    isEndpointA: opts?.isEndpointA,
+    isEndpointB: opts?.isEndpointB,
+    isMaskedFemale: isMasked
+  };
+}
+
+/**
+ * Builds a complete visual path from Path1 (ending at LCA) and Path2 (ending at LCA) using actual names instead of الأول/الثاني
+ */
+function buildVisualPathBetweenLineages(
+  id: string,
+  title: string,
+  path1ToLca: ProcessedPerson[],
+  path2ToLca: ProcessedPerson[],
+  nameA: string,
+  nameB: string,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean,
+  opts?: {
+    badge?: string;
+    prefixNodesA?: KinshipPathNode[];
+    suffixNodesB?: KinshipPathNode[];
+    lcaRoleLabel?: string;
+  }
+): KinshipVisualPath {
+  const nodes: KinshipPathNode[] = [];
+  if (opts?.prefixNodesA && opts.prefixNodesA.length > 0) {
+    nodes.push(...opts.prefixNodesA);
+  }
+
+  const lca = path1ToLca[path1ToLca.length - 1];
+  const dist1 = path1ToLca.length - 1;
+  const dist2 = path2ToLca.length - 1;
+
+  for (let i = 0; i < path1ToLca.length - 1; i++) {
+    const p = path1ToLca[i];
+    const isFirstOverall = i === 0 && (!opts?.prefixNodesA || opts.prefixNodesA.length === 0);
+    let role = `جد ${nameA}`;
+    if (isFirstOverall) {
+      role = nameA;
+    } else if (i === 1 && (!opts?.prefixNodesA || opts.prefixNodesA.length === 0)) {
+      role = p.gender === 'f' ? `والدة ${nameA}` : `والد ${nameA}`;
+    } else if (i === path1ToLca.length - 2 && dist1 >= 2 && dist2 >= 1) {
+      role = p.gender === 'f' ? `بنت الجد المشترك` : `ابن الجد المشترك (فرع ${nameA})`;
+    }
+    nodes.push(
+      makePersonPathNode(p, role, people, isPrivacyRestricted, {
+        isEndpointA: isFirstOverall,
+        customDisplayName: isFirstOverall ? nameA : undefined
+      })
+    );
+  }
+
+  if (lca) {
+    const isA = dist1 === 0 && (!opts?.prefixNodesA || opts.prefixNodesA.length === 0);
+    const isB = dist2 === 0 && (!opts?.suffixNodesB || opts.suffixNodesB.length === 0);
+    nodes.push(
+      makePersonPathNode(
+        lca,
+        opts?.lcaRoleLabel || (isA ? `${nameA} (الجد الجامع)` : isB ? `${nameB} (الجد الجامع)` : 'الجد المشترك'),
+        people,
+        isPrivacyRestricted,
+        {
+          isHighlight: true,
+          isEndpointA: isA,
+          isEndpointB: isB
+        }
+      )
+    );
+  }
+
+  for (let j = path2ToLca.length - 2; j >= 0; j--) {
+    const p = path2ToLca[j];
+    const isLastOverall = j === 0 && (!opts?.suffixNodesB || opts.suffixNodesB.length === 0);
+    let role = `جد ${nameB}`;
+    if (isLastOverall) {
+      role = nameB;
+    } else if (j === path2ToLca.length - 2 && dist1 >= 1 && dist2 >= 2) {
+      role = p.gender === 'f' ? `بنت الجد المشترك` : `ابن الجد المشترك (فرع ${nameB})`;
+    } else if (j === 1 && (!opts?.suffixNodesB || opts.suffixNodesB.length === 0)) {
+      role = p.gender === 'f' ? `والدة ${nameB}` : `والد ${nameB}`;
+    }
+    nodes.push(
+      makePersonPathNode(p, role, people, isPrivacyRestricted, {
+        isEndpointB: isLastOverall,
+        customDisplayName: isLastOverall ? nameB : undefined
+      })
+    );
+  }
+
+  if (opts?.suffixNodesB && opts.suffixNodesB.length > 0) {
+    nodes.push(...opts.suffixNodesB);
+  }
+
+  return {
+    id,
+    title,
+    badge: opts?.badge,
+    nodes
+  };
+}
+
+/**
+ * Builds a concise Mother Card
+ */
+function buildMotherConciseCard(
+  motherInfo: MotherInfo | null,
+  motherPerson: ProcessedPerson | null,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean
+): MaternalPartyConciseCard | null {
+  if (!motherInfo || !motherInfo.name) return null;
+
+  const nameDisplay = formatFemaleInfoDisplayName(motherInfo, motherPerson, people, isPrivacyRestricted);
+  const originBadge = motherInfo.isFromFamily
+    ? 'من آل فردان'
+    : motherInfo.familyOrigin || 'خارج العائلة';
+
+  let shortLineage = 'غير مسجل';
+  let grandmotherName = 'غير مسجلة';
+
+  if (motherPerson) {
+    const ancPath = getAncestorsPath(motherPerson.key, people);
+    if (ancPath.length > 1) {
+      const fatherChain = formatPatronymicChain(ancPath.slice(1, 4), people, isPrivacyRestricted);
+      shortLineage = `بنت ${fatherChain}`;
+    } else {
+      shortLineage = originBadge;
+    }
+
+    const fatherOfMother = ancPath[1] || null;
+    const gmInfo = motherPerson.mother || null;
+    const gmPerson = resolveMotherPerson(gmInfo, fatherOfMother, people);
+    if (gmInfo && gmInfo.name) {
+      grandmotherName = formatFemaleInfoDisplayName(gmInfo, gmPerson, people, isPrivacyRestricted);
+      if (gmInfo.familyOrigin && !gmInfo.isFromFamily) {
+        grandmotherName += ` (${gmInfo.familyOrigin})`;
+      }
+    }
+  } else {
+    if (motherInfo.name.includes('بنت ')) {
+      const afterBint = motherInfo.name.split('بنت ')[1]?.trim();
+      if (afterBint) shortLineage = `بنت ${afterBint}`;
+    } else {
+      shortLineage = originBadge;
+    }
+  }
+
+  return {
+    nameDisplay,
+    shortLineage,
+    grandmotherName,
+    originBadge,
+    personKey: !isPrivacyRestricted && motherPerson ? motherPerson.key : undefined
+  };
+}
+
+/**
+ * Analyzes maternal relationships (أم ⬅ أم) between Person A and Person B using real names
  */
 export function analyzeMaternalKinship(
   personA: ProcessedPerson,
   personB: ProcessedPerson,
-  people: Map<string, ProcessedPerson>
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
 ): MaternalKinship {
+  const fatherA = personA.parentKey ? people.get(personA.parentKey) || null : null;
+  const fatherB = personB.parentKey ? people.get(personB.parentKey) || null : null;
+
   const motherA: MotherInfo | null = personA.mother || null;
   const motherB: MotherInfo | null = personB.mother || null;
 
-  const motherPersonA = motherA?.personKey ? people.get(motherA.personKey) || null : null;
-  const motherPersonB = motherB?.personKey ? people.get(motherB.personKey) || null : null;
+  const motherPersonA = resolveMotherPerson(motherA, fatherA, people);
+  const motherPersonB = resolveMotherPerson(motherB, fatherB, people);
+
+  const { nameA, nameB } = getDistinctPairNames(personA, personB, people, isPrivacyRestricted);
+  const motherADisplayName = formatFemaleInfoDisplayName(motherA, motherPersonA, people, isPrivacyRestricted);
+  const motherBDisplayName = formatFemaleInfoDisplayName(motherB, motherPersonB, people, isPrivacyRestricted);
+
+  const partyABadge = `أم ${nameA} (${motherADisplayName})`;
+  const partyBBadge = `أم ${nameB} (${motherBDisplayName})`;
+
+  const motherAConcise = buildMotherConciseCard(motherA, motherPersonA, people, isPrivacyRestricted);
+  const motherBConcise = buildMotherConciseCard(motherB, motherPersonB, people, isPrivacyRestricted);
+
+  const motherALineageSummary = motherAConcise
+    ? `${motherAConcise.nameDisplay} (${motherAConcise.shortLineage}) — والدتها: ${motherAConcise.grandmotherName}`
+    : `لم يتم توثيق اسم والدة «${nameA}» بعد.`;
+  const motherBLineageSummary = motherBConcise
+    ? `${motherBConcise.nameDisplay} (${motherBConcise.shortLineage}) — والدتها: ${motherBConcise.grandmotherName}`
+    : `لم يتم توثيق اسم والدة «${nameB}» بعد.`;
 
   let hasMaternalRelation = false;
   let maternalTitle = '';
+  let maternalConciseSummary = '';
   let maternalExplanation = '';
   let maternalCommonAncestor: ProcessedPerson | null = null;
+  let maternalBranchingPoint: MaternalKinship['maternalBranchingPoint'] = null;
   let maternalPathA: ProcessedPerson[] = [];
   let maternalPathB: ProcessedPerson[] = [];
   let maternalDistanceA = -1;
   let maternalDistanceB = -1;
+  let visualPath: KinshipVisualPath | null = null;
 
-  // 1. Person B is Person A's Mother
+  // 1. Direct motherhood: Person B is Person A's Mother
   if (motherPersonA && motherPersonA.key === personB.key) {
     hasMaternalRelation = true;
-    maternalTitle = 'الوالدة (أم مباشرة)';
-    maternalExplanation = `«${personB.name}» هي الوالدة المباشرة لـ «${personA.name}».`;
+    maternalTitle = `الوالدة المباشرة (أم ${nameA})`;
+    maternalConciseSummary = `«${nameB}» هي الوالدة المباشرة لـ «${nameA}».`;
+    maternalExplanation = maternalConciseSummary;
     maternalCommonAncestor = motherPersonA;
     maternalPathA = [personA, motherPersonA];
     maternalPathB = [personB];
+    maternalDistanceA = 1;
+    maternalDistanceB = 0;
   }
-  // 2. Person A is Person B's Mother
+  // 2. Direct motherhood: Person A is Person B's Mother
   else if (motherPersonB && motherPersonB.key === personA.key) {
     hasMaternalRelation = true;
-    maternalTitle = 'ابن / ابنة (علاقة أمومة مباشرة)';
-    maternalExplanation = `«${personA.name}» هي الوالدة المباشرة لـ «${personB.name}».`;
+    maternalTitle = `أمومة مباشرة (${nameA} والدة ${nameB})`;
+    maternalConciseSummary = `«${nameA}» هي الوالدة المباشرة لـ «${nameB}».`;
+    maternalExplanation = maternalConciseSummary;
     maternalCommonAncestor = motherPersonB;
     maternalPathA = [personA];
     maternalPathB = [personB, motherPersonB];
+    maternalDistanceA = 0;
+    maternalDistanceB = 1;
   }
-  // 3. Person B is Maternal Grandfather of Person A
-  else if (motherPersonA && motherPersonA.parentKey === personB.key) {
-    hasMaternalRelation = true;
-    maternalTitle = personB.gender === 'f' ? 'جدة لأم' : 'جد لأم (والد الوالدة)';
-    maternalExplanation = `«${personB.name}» هو الجد لأم لـ «${personA.name}» (والد والدته «${motherPersonA.name}»).`;
-    maternalCommonAncestor = personB;
-    maternalPathA = [personA, motherPersonA, personB];
-    maternalPathB = [personB];
-  }
-  // 4. Person A is Maternal Grandfather of Person B
-  else if (motherPersonB && motherPersonB.parentKey === personA.key) {
-    hasMaternalRelation = true;
-    maternalTitle = personA.gender === 'f' ? 'جدة لأم' : 'جد لأم (والد والدته)';
-    maternalExplanation = `«${personA.name}» هو الجد لأم لـ «${personB.name}» (والد والدته «${motherPersonB.name}»).`;
-    maternalCommonAncestor = personA;
-    maternalPathA = [personA];
-    maternalPathB = [personB, motherPersonB, personA];
-  }
-  // 5. Person B is Maternal Uncle or Aunt to Person A (Sibling of motherPersonA)
-  else if (motherPersonA && motherPersonA.parentKey && personB.parentKey && motherPersonA.parentKey === personB.parentKey) {
-    hasMaternalRelation = true;
-    const maternalGrandpa = people.get(motherPersonA.parentKey);
-    if (personB.gender === 'm') {
-      maternalTitle = 'خال مباشر (شقيق الوالدة)';
-      maternalExplanation = `«${personB.name}» هو خال مباشر لـ «${personA.name}» (شقيق والدته «${motherPersonA.name}»)، ويلتقيان في الجد لأم: «${maternalGrandpa?.name || 'الجد'}».`;
-    } else {
-      maternalTitle = 'خالة مباشرة (شقيقة الوالدة)';
-      maternalExplanation = `«${personB.name}» هي خالة مباشرة لـ «${personA.name}» (شقيقة والدته «${motherPersonA.name}»)، وتلتقي معها في الجد لأم: «${maternalGrandpa?.name || 'الجد'}».`;
-    }
-    maternalCommonAncestor = maternalGrandpa || null;
-    maternalPathA = [personA, motherPersonA, maternalGrandpa!].filter(Boolean);
-    maternalPathB = [personB, maternalGrandpa!].filter(Boolean);
-  }
-  // 6. Person A is Maternal Uncle or Aunt to Person B (Sibling of motherPersonB)
-  else if (motherPersonB && motherPersonB.parentKey && personA.parentKey && motherPersonB.parentKey === personA.parentKey) {
-    hasMaternalRelation = true;
-    const maternalGrandpa = people.get(motherPersonB.parentKey);
-    if (personA.gender === 'm') {
-      maternalTitle = 'خال مباشر (شقيق والدته)';
-      maternalExplanation = `«${personA.name}» هو خال مباشر لـ «${personB.name}» (شقيق والدته «${motherPersonB.name}»).`;
-    } else {
-      maternalTitle = 'خالة مباشرة (شقيقة والدته)';
-      maternalExplanation = `«${personA.name}» هي خالة مباشرة لـ «${personB.name}» (شقيقة والدته «${motherPersonB.name}»).`;
-    }
-    maternalCommonAncestor = maternalGrandpa || null;
-    maternalPathA = [personA, maternalGrandpa!].filter(Boolean);
-    maternalPathB = [personB, motherPersonB, maternalGrandpa!].filter(Boolean);
-  }
-  // 7. Both have mothers from the family
+  // 3. Both parties have mothers linked in the family tree (أم ⬅ أم)
   else if (motherPersonA && motherPersonB) {
-    // Same mother (إخوة لأم)
+    // 3a. Same exact mother
     if (motherPersonA.key === motherPersonB.key) {
       hasMaternalRelation = true;
-      maternalTitle = 'إخوة لأم (مشتركان في نفس الوالدة)';
-      maternalExplanation = `«${personA.name}» و«${personB.name}» والدتهما واحدة هي «${motherPersonA.name}»، وبذلك هما إخوة لأم.`;
+      const isFullSiblings = personA.parentKey && personA.parentKey === personB.parentKey;
+      maternalTitle = isFullSiblings ? 'إخوة أشقاء (من نفس الأم والأب)' : 'إخوة لأم (يجتمعان في نفس الوالدة)';
+      maternalConciseSummary = `يجتمع «${nameA}» و«${nameB}» في نفس الوالدة «${motherADisplayName}» (${maternalTitle}).`;
+      maternalExplanation = maternalConciseSummary;
       maternalCommonAncestor = motherPersonA;
       maternalPathA = [personA, motherPersonA];
       maternalPathB = [personB, motherPersonB];
+      maternalDistanceA = 1;
+      maternalDistanceB = 1;
     }
-    // Mothers are sisters (أولاد خالة مباشرون)
+    // 3b. Mothers are sisters (same father)
     else if (motherPersonA.parentKey && motherPersonA.parentKey === motherPersonB.parentKey) {
       hasMaternalRelation = true;
-      const maternalGrandpa = people.get(motherPersonA.parentKey);
-      maternalTitle = 'أبناء خالات مباشرون (أولاد خالة)';
-      maternalExplanation = `والدة «${personA.name}» («${motherPersonA.name}») ووالدة «${personB.name}» («${motherPersonB.name}») شقيقتان كريمتا «${maternalGrandpa?.name || 'الجد'}»، مما يجعلهما أبناء خالات مباشرين.`;
-      maternalCommonAncestor = maternalGrandpa || null;
-      maternalPathA = [personA, motherPersonA, maternalGrandpa!].filter(Boolean);
-      maternalPathB = [personB, motherPersonB, maternalGrandpa!].filter(Boolean);
+      const maternalGrandpa = people.get(motherPersonA.parentKey)!;
+      const grandpaDisp = formatPersonDisplayName(maternalGrandpa, people, isPrivacyRestricted);
+      maternalTitle = 'أبناء خالة مباشرون (الأمهات شقيقات)';
+      maternalConciseSummary = `والدة «${nameA}» («${motherADisplayName}») ووالدة «${nameB}» («${motherBDisplayName}») شقيقتان تجتمعان في والدهما الجد «${grandpaDisp}» (الجيل ${maternalGrandpa.generation}) — فـ «${nameA}» و«${nameB}» أبناء خالة مباشرين.`;
+      maternalExplanation = maternalConciseSummary;
+      maternalCommonAncestor = maternalGrandpa;
+      maternalBranchingPoint = {
+        ancestor: maternalGrandpa,
+        branchA: motherPersonA,
+        branchB: motherPersonB
+      };
+      maternalPathA = [personA, motherPersonA, maternalGrandpa];
+      maternalPathB = [personB, motherPersonB, maternalGrandpa];
+      maternalDistanceA = 2;
+      maternalDistanceB = 2;
     }
-    // Mothers share another common ancestor
+    // 3c. Mothers are maternal half-sisters (same mother)
+    else if (
+      motherPersonA.mother?.name &&
+      motherPersonB.mother?.name &&
+      ((motherPersonA.mother.personKey && motherPersonA.mother.personKey === motherPersonB.mother.personKey) ||
+        normalizeArabic(motherPersonA.mother.name) === normalizeArabic(motherPersonB.mother.name))
+    ) {
+      hasMaternalRelation = true;
+      const sharedGmPerson = resolveMotherPerson(motherPersonA.mother, null, people);
+      const sharedGmDisp = formatFemaleInfoDisplayName(motherPersonA.mother, sharedGmPerson, people, isPrivacyRestricted);
+      maternalTitle = 'أبناء خالة لأم (الأمهات أختان من أم واحدة)';
+      maternalConciseSummary = `والدة «${nameA}» («${motherADisplayName}») ووالدة «${nameB}» («${motherBDisplayName}») أختان لأم تجتمعان في والدتهما الجدة «${sharedGmDisp}» — فـ «${nameA}» و«${nameB}» أبناء خالة.`;
+      maternalExplanation = maternalConciseSummary;
+      maternalCommonAncestor = sharedGmPerson;
+      maternalDistanceA = 2;
+      maternalDistanceB = 2;
+    }
+    // 3d. Mothers meet at a common ancestor in their paternal lineages
     else {
       const lcaMothers = findLowestCommonAncestor(motherPersonA.key, motherPersonB.key, people);
       if (lcaMothers.ancestor) {
         hasMaternalRelation = true;
-        maternalTitle = `أبناء عمومة أمهات (يلتقيان في ${lcaMothers.ancestor.name})`;
-        maternalExplanation = `والدة الطرف الأول («${motherPersonA.name}») ووالدة الطرف الثاني («${motherPersonB.name}») تلتقيان في الجد المشترك للأمهات: «${lcaMothers.ancestor.name}»، وبذلك تجمعهما قرابة أرحام وأخوال.`;
-        maternalCommonAncestor = lcaMothers.ancestor;
+        const anc = lcaMothers.ancestor;
+        const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+        const d1 = lcaMothers.distance1;
+        const d2 = lcaMothers.distance2;
+
+        maternalCommonAncestor = anc;
         maternalPathA = [personA, ...lcaMothers.path1];
         maternalPathB = [personB, ...lcaMothers.path2];
-        maternalDistanceA = lcaMothers.distance1 + 1;
-        maternalDistanceB = lcaMothers.distance2 + 1;
+        maternalDistanceA = d1 + 1;
+        maternalDistanceB = d2 + 1;
+
+        const branchA = d1 >= 1 ? lcaMothers.path1[lcaMothers.path1.length - 2] : motherPersonA;
+        const branchB = d2 >= 1 ? lcaMothers.path2[lcaMothers.path2.length - 2] : motherPersonB;
+
+        if (d1 >= 1 && d2 >= 1 && branchA.key !== branchB.key) {
+          maternalBranchingPoint = {
+            ancestor: anc,
+            branchA,
+            branchB
+          };
+        }
+
+        const branchADisp = formatPersonDisplayName(branchA, people, isPrivacyRestricted);
+        const branchBDisp = formatPersonDisplayName(branchB, people, isPrivacyRestricted);
+
+        if (d1 === 2 && d2 === 2) {
+          maternalTitle = 'الأمهات بنات عم مباشرات (الدرجة الأولى)';
+          maternalConciseSummary = `والدة «${nameA}» («${motherADisplayName}») ووالدة «${nameB}» («${motherBDisplayName}») ابنتا عم مباشرتان تجتمعان في الجد «${ancDisp}» (الجيل ${anc.generation}) عبر الأخوين «${branchADisp}» و«${branchBDisp}».`;
+        } else if (d1 === 1 && d2 === 2) {
+          maternalTitle = `والدة ${nameA} عمة مباشرة لوالدة ${nameB}`;
+          maternalConciseSummary = `والدة «${nameA}» («${motherADisplayName}») هي عمة مباشرة لوالدة «${nameB}» («${motherBDisplayName}»)، وتجتمعان في الجد «${ancDisp}».`;
+        } else if (d1 === 2 && d2 === 1) {
+          maternalTitle = `والدة ${nameB} عمة مباشرة لوالدة ${nameA}`;
+          maternalConciseSummary = `والدة «${nameB}» («${motherBDisplayName}») هي عمة مباشرة لوالدة «${nameA}» («${motherADisplayName}»)، وتجتمعان في الجد «${ancDisp}».`;
+        } else if (d1 === d2) {
+          const deg = d1 - 1;
+          maternalTitle = `الأمهات بنات عمومة (الدرجة ${deg})`;
+          maternalConciseSummary = `تلتقي والدة «${nameA}» («${motherADisplayName}») مع والدة «${nameB}» («${motherBDisplayName}») في الجد المشترك «${ancDisp}» (الجيل ${anc.generation}) عبر الأخوين «${branchADisp}» و«${branchBDisp}» (درجة عمومة الأمهات: الدرجة ${deg}).`;
+        } else {
+          maternalTitle = `تلتقي الأمهات في الجد «${ancDisp}»`;
+          maternalConciseSummary = `تلتقي والدة «${nameA}» («${motherADisplayName}») مع والدة «${nameB}» («${motherBDisplayName}») في الجد المشترك «${ancDisp}» (الجيل ${anc.generation}) عبر الأخوين «${branchADisp}» و«${branchBDisp}» (يبعد ${formatGenerationsCount(d1)} عن والدة «${nameA}» و${formatGenerationsCount(d2)} عن والدة «${nameB}»).`;
+        }
+
+        maternalExplanation = maternalConciseSummary;
+
+        visualPath = buildVisualPathBetweenLineages(
+          'mat-lca-path',
+          `مسار التقاء نسب والدة ${nameA} ووالدة ${nameB}`,
+          lcaMothers.path1,
+          lcaMothers.path2,
+          `والدة ${nameA}`,
+          `والدة ${nameB}`,
+          people,
+          isPrivacyRestricted,
+          {
+            badge: maternalTitle,
+            prefixNodesA: [makePersonPathNode(personA, nameA, people, isPrivacyRestricted, { isEndpointA: true, customDisplayName: nameA })],
+            suffixNodesB: [makePersonPathNode(personB, nameB, people, isPrivacyRestricted, { isEndpointB: true, customDisplayName: nameB })],
+            lcaRoleLabel: 'الجد المشترك للأمهات'
+          }
+        );
       }
     }
   }
-  // 8. Person B shares LCA with motherPersonA
-  else if (motherPersonA) {
-    const lca = findLowestCommonAncestor(motherPersonA.key, personB.key, people);
-    if (lca.ancestor && lca.distance1 <= 3 && lca.distance2 <= 3) {
+  // 4. Both mothers are from the same external family origin
+  else if (motherA?.familyOrigin && motherB?.familyOrigin) {
+    const origA = motherA.familyOrigin.trim();
+    const origB = motherB.familyOrigin.trim();
+    if (origA && origB && normalizeArabic(origA) === normalizeArabic(origB)) {
       hasMaternalRelation = true;
-      if (lca.distance1 === 2 && lca.distance2 === 2) {
-        maternalTitle = 'ابن خال / ابن عم والدته';
-        maternalExplanation = `«${personB.name}» هو ابن عم لوالدة «${personA.name}» («${motherPersonA.name}»)، ويلتقيان في الجد لأم «${lca.ancestor.name}».`;
-      } else {
-        maternalTitle = `قرابة من جهة والدة الطرف الأول (الأخوال)`;
-        maternalExplanation = `«${personB.name}» يلتقي مع والدة «${personA.name}» («${motherPersonA.name}») في الجد المشترك لأم: «${lca.ancestor.name}».`;
-      }
-      maternalCommonAncestor = lca.ancestor;
-      maternalPathA = [personA, ...lca.path1];
-      maternalPathB = lca.path2;
-    }
-  }
-  // 9. Person A shares LCA with motherPersonB
-  else if (motherPersonB) {
-    const lca = findLowestCommonAncestor(personA.key, motherPersonB.key, people);
-    if (lca.ancestor && lca.distance1 <= 3 && lca.distance2 <= 3) {
-      hasMaternalRelation = true;
-      if (lca.distance1 === 2 && lca.distance2 === 2) {
-        maternalTitle = 'ابن عم والدته (من قرابة الأخوال)';
-        maternalExplanation = `«${personA.name}» هو ابن عم لوالدة «${personB.name}» («${motherPersonB.name}»)، ويلتقيان في الجد لأم «${lca.ancestor.name}».`;
-      } else {
-        maternalTitle = `قرابة من جهة والدة الطرف الثاني (الأخوال)`;
-        maternalExplanation = `«${personA.name}» يلتقي مع والدة «${personB.name}» («${motherPersonB.name}») في الجد المشترك لأم: «${lca.ancestor.name}».`;
-      }
-      maternalCommonAncestor = lca.ancestor;
-      maternalPathA = lca.path1;
-      maternalPathB = [personB, ...lca.path2];
+      maternalTitle = `أخوال من نفس العائلة (${origA})`;
+      maternalConciseSummary = `تجتمع والدة «${nameA}» ووالدة «${nameB}» في انتمائهما لنفس الأسرة الكريمة: «${origA}».`;
+      maternalExplanation = maternalConciseSummary;
     }
   }
 
-  // 10. External mother origin match
-  if (!hasMaternalRelation && motherA?.familyOrigin && motherB?.familyOrigin) {
-    if (motherA.familyOrigin.trim().toLowerCase() === motherB.familyOrigin.trim().toLowerCase()) {
-      hasMaternalRelation = true;
-      maternalTitle = `أخوال من نفس العائلة (${motherA.familyOrigin})`;
-      maternalExplanation = `والدة الطرف الأول ووالدة الطرف الثاني تنتميان لنفس العائلة الكريمة: «${motherA.familyOrigin}».`;
+  if (!hasMaternalRelation) {
+    if (motherA && motherB) {
+      maternalConciseSummary = `لا يوجد التقاء مباشر مسجل بين عمود نسب والدة «${nameA}» ووالدة «${nameB}» في البيانات الحالية.`;
+    } else {
+      maternalConciseSummary = `لم يتم توثيق بيانات والدة «${nameA}» ووالدة «${nameB}» بالكامل لفحص نقطة الالتقاء بينهما.`;
     }
   }
 
-  // Lineage chain for display
+  const detailedNarrativeParagraphs = [
+    `والدة ${nameA}: ${motherALineageSummary}`,
+    `والدة ${nameB}: ${motherBLineageSummary}`,
+    `خلاصة قرابة الأمهات: ${maternalConciseSummary}`
+  ];
+
   const maternalLineageChain: ProcessedPerson[] = [
     ...maternalPathA,
     ...maternalPathB.slice(0, -1).reverse()
@@ -290,24 +806,537 @@ export function analyzeMaternalKinship(
     personBMother: motherB,
     motherPersonA,
     motherPersonB,
+    motherADisplayName,
+    motherBDisplayName,
+    partyABadge,
+    partyBBadge,
+    motherAConcise,
+    motherBConcise,
+    motherALineageSummary,
+    motherBLineageSummary,
     maternalTitle,
+    maternalConciseSummary,
     maternalExplanation,
+    detailedNarrativeParagraphs,
     maternalCommonAncestor,
+    maternalBranchingPoint,
     maternalPathA,
     maternalPathB,
     maternalLineageChain,
     maternalDistanceA,
-    maternalDistanceB
+    maternalDistanceB,
+    visualPath
   };
 }
 
 /**
- * Analyzes in-law and spousal relationships between Person A and Person B
+ * Collects all documented grandmothers for a person
+ */
+export function collectPersonGrandmothers(
+  person: ProcessedPerson,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
+): GrandmotherRecord[] {
+  const records: GrandmotherRecord[] = [];
+  const seenKeysOrNames = new Set<string>();
+
+  const addGm = (
+    roleLabel: string,
+    throughAncestor: ProcessedPerson,
+    throughDistance: number,
+    side: 'paternal' | 'maternal',
+    motherInfo: MotherInfo | null | undefined
+  ) => {
+    if (!motherInfo || !motherInfo.name || !motherInfo.name.trim()) return;
+    const throughParent = throughAncestor.parentKey ? people.get(throughAncestor.parentKey) || null : null;
+    const gmPerson = resolveMotherPerson(motherInfo, throughParent, people);
+    const dedupId = gmPerson ? `key:${gmPerson.key}` : `name:${throughAncestor.key}:${normalizeArabic(motherInfo.name)}`;
+    if (seenKeysOrNames.has(dedupId)) return;
+    seenKeysOrNames.add(dedupId);
+
+    const fatherPerson = gmPerson?.parentKey ? people.get(gmPerson.parentKey) || null : null;
+    const displayName = formatFemaleInfoDisplayName(motherInfo, gmPerson, people, isPrivacyRestricted);
+
+    let lineageSummary = `«${displayName}»`;
+    if (gmPerson && fatherPerson) {
+      const fatherChain = formatPatronymicChain(getAncestorsPath(fatherPerson.key, people).slice(0, 3), people, isPrivacyRestricted);
+      lineageSummary += ` (بنت ${fatherChain})`;
+    } else if (motherInfo.isFromFamily) {
+      lineageSummary += ' (من آل فردان)';
+    } else if (motherInfo.familyOrigin) {
+      lineageSummary += ` (${motherInfo.familyOrigin})`;
+    }
+
+    records.push({
+      id: `${person.key}_gm_${records.length}`,
+      roleLabel,
+      throughAncestor,
+      throughDistance,
+      side,
+      motherInfo,
+      person: gmPerson,
+      fatherPerson,
+      displayName,
+      lineageSummary
+    });
+  };
+
+  const patPath = getAncestorsPath(person.key, people);
+  for (let i = 1; i < patPath.length; i++) {
+    const anc = patPath[i];
+    if (!anc.mother || !anc.mother.name) continue;
+    const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+    let roleLabel = '';
+    if (i === 1) {
+      roleLabel = `الجدة لأب (أم الوالد «${ancDisp}»)`;
+    } else if (i === 2) {
+      roleLabel = `أم الجد لأب (والدة «${ancDisp}»)`;
+    } else {
+      roleLabel = `والدة الجد («${ancDisp}»)`;
+    }
+    addGm(roleLabel, anc, i, 'paternal', anc.mother);
+  }
+
+  const father = patPath[1] || null;
+  const motherPerson = resolveMotherPerson(person.mother, father, people);
+  if (motherPerson) {
+    const matAncPath = getAncestorsPath(motherPerson.key, people);
+    for (let j = 0; j < matAncPath.length; j++) {
+      const mAnc = matAncPath[j];
+      if (!mAnc.mother || !mAnc.mother.name) continue;
+      const mAncDisp = formatPersonDisplayName(mAnc, people, isPrivacyRestricted);
+      let roleLabel = '';
+      if (j === 0) {
+        roleLabel = `الجدة لأم (أم الوالدة «${mAncDisp}»)`;
+      } else {
+        roleLabel = `أم الجد لأم (والدة «${mAncDisp}»)`;
+      }
+      addGm(roleLabel, mAnc, j + 1, 'maternal', mAnc.mother);
+    }
+  }
+
+  return records;
+}
+
+/**
+ * Section 3: Analyzes Cross-Kinship (أب ⬅ أم / أم ⬅ أب) and Grandmothers (الجدات) using real names and dual badges
+ */
+export function analyzeCrossAndGrandmothersKinship(
+  personA: ProcessedPerson,
+  personB: ProcessedPerson,
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
+): CrossAndGrandmothersKinship {
+  const { nameA, nameB } = getDistinctPairNames(personA, personB, people, isPrivacyRestricted);
+
+  const fatherA = personA.parentKey ? people.get(personA.parentKey) || null : null;
+  const fatherB = personB.parentKey ? people.get(personB.parentKey) || null : null;
+  const fatherADisp = fatherA ? formatPersonDisplayName(fatherA, people, isPrivacyRestricted) : nameA;
+  const fatherBDisp = fatherB ? formatPersonDisplayName(fatherB, people, isPrivacyRestricted) : nameB;
+
+  const motherPersonA = resolveMotherPerson(personA.mother, fatherA, people);
+  const motherPersonB = resolveMotherPerson(personB.mother, fatherB, people);
+
+  const motherADisp = formatFemaleInfoDisplayName(personA.mother, motherPersonA, people, isPrivacyRestricted);
+  const motherBDisp = formatFemaleInfoDisplayName(personB.mother, motherPersonB, people, isPrivacyRestricted);
+
+  let paternalAToMaternalB: CrossOrGrandmotherLink | null = null;
+  let maternalAToPaternalB: CrossOrGrandmotherLink | null = null;
+  const grandmotherLinks: CrossOrGrandmotherLink[] = [];
+
+  // 1. Paternal Line of A ⬅ Maternal Line of B (أب [اسم أ] ⬅ أم [اسم ب])
+  if (motherPersonB && motherPersonB.key !== personA.key) {
+    const lcaAB = findLowestCommonAncestor(personA.key, motherPersonB.key, people);
+    if (lcaAB.ancestor) {
+      const anc = lcaAB.ancestor;
+      const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+      const dA = lcaAB.distance1;
+      const dMB = lcaAB.distance2;
+
+      const branchA = dA >= 1 ? lcaAB.path1[lcaAB.path1.length - 2] : personA;
+      const branchMB = dMB >= 1 ? lcaAB.path2[lcaAB.path2.length - 2] : motherPersonB;
+      const branchADisp = formatPersonDisplayName(branchA, people, isPrivacyRestricted);
+      const branchMBDisp = formatPersonDisplayName(branchMB, people, isPrivacyRestricted);
+
+      const partyABadge = fatherA ? `أب ${nameA} (${fatherADisp})` : `نسب ${nameA}`;
+      const partyBBadge = `أم ${nameB} (${motherBDisp})`;
+      const badge = `${partyABadge} ⬅ ${partyBBadge}`;
+      let title = `تقاطع نسب والد ${nameA} مع والدة ${nameB}`;
+      let conciseBullet = '';
+
+      if (dA === 0 && dMB === 1) {
+        title = `${nameA} هو الجد لأم المباشر لـ ${nameB}`;
+        conciseBullet = `«${nameA}» هو والد «${motherBDisp}» (أي الجد المباشر لأم «${nameB}»).`;
+      } else if (dA === 1 && dMB === 1) {
+        title = personA.gender === 'f' ? `خالة مباشرة لـ ${nameB}` : `خال مباشر لـ ${nameB}`;
+        conciseBullet = `«${nameA}» هو شقيق والدة «${nameB}» («${motherBDisp}») من صلب الجد «${ancDisp}» (خال مباشر لـ «${nameB}»).`;
+      } else if (dA === 2 && dMB === 1 && fatherA) {
+        title = `ابن خال مباشر لـ ${nameB} (والد ${nameA} شقيق أم ${nameB})`;
+        conciseBullet = `والد «${nameA}» («${fatherADisp}») هو الشقيق المباشر لوالدة «${nameB}» («${motherBDisp}»)، ويجتمعان في الجد «${ancDisp}».`;
+      } else if (dA >= 1 && dMB >= 1 && branchA.key !== branchMB.key) {
+        title = `التقاء والد ${nameA} مع والدة ${nameB} في الجد «${ancDisp}»`;
+        conciseBullet = `يلتقي عمود والد «${nameA}» (${fatherADisp}) مع والدة «${nameB}» (${motherBDisp}) في الجد «${ancDisp}» عبر الأخوين «${branchADisp}» و«${branchMBDisp}».`;
+      } else {
+        title = `التقاء والد ${nameA} مع والدة ${nameB} في الجد «${ancDisp}»`;
+        conciseBullet = `يلتقي عمود والد «${nameA}» (${fatherADisp}) مع والدة «${nameB}» (${motherBDisp}) في الجد «${ancDisp}» (الجيل ${anc.generation}).`;
+      }
+
+      const visualPath = buildVisualPathBetweenLineages(
+        'cross-ab-mb',
+        `مسار التقاطع: ${partyABadge} ⬅ ${partyBBadge}`,
+        lcaAB.path1,
+        lcaAB.path2,
+        nameA,
+        `والدة ${nameB}`,
+        people,
+        isPrivacyRestricted,
+        {
+          badge,
+          suffixNodesB: [makePersonPathNode(personB, nameB, people, isPrivacyRestricted, { isEndpointB: true, customDisplayName: nameB })],
+          lcaRoleLabel: 'الجد المشترك'
+        }
+      );
+
+      paternalAToMaternalB = {
+        id: 'cross_paternalA_maternalB',
+        category: 'paternal_to_maternal',
+        title,
+        badge,
+        partyABadge,
+        connector: '⬅',
+        partyBBadge,
+        commonAncestor: anc,
+        conciseBullet,
+        narrative: conciseBullet,
+        fullChainText: conciseBullet,
+        visualPath
+      };
+    }
+  }
+
+  // 2. Maternal Line of A ⬅ Paternal Line of B (أم [اسم أ] ⬅ أب [اسم ب])
+  if (motherPersonA && motherPersonA.key !== personB.key) {
+    const lcaBA = findLowestCommonAncestor(motherPersonA.key, personB.key, people);
+    if (lcaBA.ancestor) {
+      const anc = lcaBA.ancestor;
+      const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+      const dMA = lcaBA.distance1;
+      const dB = lcaBA.distance2;
+
+      const branchMA = dMA >= 1 ? lcaBA.path1[lcaBA.path1.length - 2] : motherPersonA;
+      const branchB = dB >= 1 ? lcaBA.path2[lcaBA.path2.length - 2] : personB;
+      const branchMADisp = formatPersonDisplayName(branchMA, people, isPrivacyRestricted);
+      const branchBDisp = formatPersonDisplayName(branchB, people, isPrivacyRestricted);
+
+      const partyABadge = `أم ${nameA} (${motherADisp})`;
+      const partyBBadge = fatherB ? `أب ${nameB} (${fatherBDisp})` : `نسب ${nameB}`;
+      const badge = `${partyABadge} ⬅ ${partyBBadge}`;
+      let title = `تقاطع نسب والدة ${nameA} مع والد ${nameB}`;
+      let conciseBullet = '';
+
+      if (dB === 0 && dMA === 1) {
+        title = `${nameB} هو الجد لأم المباشر لـ ${nameA}`;
+        conciseBullet = `«${nameB}» هو والد «${motherADisp}» (أي الجد المباشر لأم «${nameA}»).`;
+      } else if (dMA === 1 && dB === 1) {
+        title = `${nameB} خال مباشر لـ ${nameA}`;
+        conciseBullet = `«${nameB}» هو شقيق والدة «${nameA}» («${motherADisp}») من صلب الجد «${ancDisp}» (خال مباشر لـ «${nameA}»).`;
+      } else if (dMA === 1 && dB === 2 && fatherB) {
+        title = `ابن عمة مباشر لـ ${nameB} (أم ${nameA} شقيقة والد ${nameB})`;
+        conciseBullet = `والدة «${nameA}» («${motherADisp}») هي الشقيقة المباشرة لوالد «${nameB}» («${fatherBDisp}»)، ويجتمعان في الجد «${ancDisp}».`;
+      } else if (dMA >= 1 && dB >= 1 && branchMA.key !== branchB.key) {
+        title = `التقاء والدة ${nameA} مع والد ${nameB} في الجد «${ancDisp}»`;
+        conciseBullet = `تلتقي والدة «${nameA}» (${motherADisp}) مع عمود والد «${nameB}» (${fatherBDisp}) في الجد «${ancDisp}» عبر الأخوين «${branchMADisp}» و«${branchBDisp}».`;
+      } else {
+        title = `التقاء والدة ${nameA} مع والد ${nameB} في الجد «${ancDisp}»`;
+        conciseBullet = `تلتقي والدة «${nameA}» (${motherADisp}) مع عمود والد «${nameB}» (${fatherBDisp}) في الجد «${ancDisp}» (الجيل ${anc.generation}).`;
+      }
+
+      const visualPath = buildVisualPathBetweenLineages(
+        'cross-ma-ab',
+        `مسار التقاطع: ${partyABadge} ⬅ ${partyBBadge}`,
+        lcaBA.path1,
+        lcaBA.path2,
+        `والدة ${nameA}`,
+        nameB,
+        people,
+        isPrivacyRestricted,
+        {
+          badge,
+          prefixNodesA: [makePersonPathNode(personA, nameA, people, isPrivacyRestricted, { isEndpointA: true, customDisplayName: nameA })],
+          lcaRoleLabel: 'الجد المشترك'
+        }
+      );
+
+      maternalAToPaternalB = {
+        id: 'cross_maternalA_paternalB',
+        category: 'maternal_to_paternal',
+        title,
+        badge,
+        partyABadge,
+        connector: '⬅',
+        partyBBadge,
+        commonAncestor: anc,
+        conciseBullet,
+        narrative: conciseBullet,
+        fullChainText: conciseBullet,
+        visualPath
+      };
+    }
+  }
+
+  // 3. Grandmothers Analysis (أم الأب، أم الأم، وأمهات الأجداد)
+  const grandmothersA = collectPersonGrandmothers(personA, people, isPrivacyRestricted);
+  const grandmothersB = collectPersonGrandmothers(personB, people, isPrivacyRestricted);
+  const seenGmPairIds = new Set<string>();
+
+  for (const gmA of grandmothersA) {
+    for (const gmB of grandmothersB) {
+      const isSameByKey = gmA.person && gmB.person && gmA.person.key === gmB.person.key;
+      const isSameByNameAndAncestor =
+        !gmA.person &&
+        !gmB.person &&
+        gmA.throughAncestor.key === gmB.throughAncestor.key &&
+        normalizeArabic(gmA.motherInfo.name) === normalizeArabic(gmB.motherInfo.name);
+
+      if (isSameByKey || isSameByNameAndAncestor) {
+        if (gmA.throughAncestor.key === gmB.throughAncestor.key && gmA.throughDistance > 2 && gmB.throughDistance > 2) {
+          continue;
+        }
+        const pairKey = `same_gm_${gmA.person?.key || normalizeArabic(gmA.motherInfo.name)}`;
+        if (seenGmPairIds.has(pairKey)) continue;
+        seenGmPairIds.add(pairKey);
+
+        const partyABadge = `${gmA.roleLabel} لـ ${nameA}`;
+        const partyBBadge = `${gmB.roleLabel} لـ ${nameB}`;
+        const conciseBullet = `جدة مشتركة تجمع «${nameA}» و«${nameB}»: «${gmA.displayName}» (هي ${gmA.roleLabel} لدى «${nameA}»، و${gmB.roleLabel} لدى «${nameB}»).`;
+
+        const nodes: KinshipPathNode[] = [
+          makePersonPathNode(personA, nameA, people, isPrivacyRestricted, { isEndpointA: true, customDisplayName: nameA }),
+          makePersonPathNode(gmA.throughAncestor, gmA.side === 'paternal' ? `سلف ${nameA}` : `أم ${nameA}`, people, isPrivacyRestricted),
+          {
+            key: !isPrivacyRestricted && gmA.person ? gmA.person.key : undefined,
+            displayName: gmA.displayName,
+            roleLabel: 'الجدة المشتركة',
+            gender: 'f',
+            generation: gmA.person?.generation,
+            isHighlight: true,
+            isMaskedFemale: isPrivacyRestricted
+          }
+        ];
+        if (gmB.throughAncestor.key !== gmA.throughAncestor.key) {
+          nodes.push(makePersonPathNode(gmB.throughAncestor, gmB.side === 'paternal' ? `سلف ${nameB}` : `أم ${nameB}`, people, isPrivacyRestricted));
+        }
+        nodes.push(makePersonPathNode(personB, nameB, people, isPrivacyRestricted, { isEndpointB: true, customDisplayName: nameB }));
+
+        grandmotherLinks.push({
+          id: pairKey,
+          category: 'shared_grandmother',
+          title: `الجدة المشتركة: «${gmA.displayName}»`,
+          badge: `${partyABadge} 🤝 ${partyBBadge}`,
+          partyABadge,
+          connector: '🤝',
+          partyBBadge,
+          commonAncestor: gmA.person || gmA.fatherPerson,
+          conciseBullet,
+          narrative: conciseBullet,
+          fullChainText: conciseBullet,
+          visualPath: {
+            id: `vp_${pairKey}`,
+            title: 'مسار الجدة المشتركة',
+            badge: 'جدة مشتركة',
+            nodes
+          }
+        });
+        continue;
+      }
+
+      if (gmA.person && gmB.person && gmA.throughDistance <= 2 && gmB.throughDistance <= 2) {
+        const lcaGm = findLowestCommonAncestor(gmA.person.key, gmB.person.key, people);
+        if (lcaGm.ancestor && lcaGm.distance1 <= 2 && lcaGm.distance2 <= 2) {
+          const pairKey = `rel_gm_${[gmA.person.key, gmB.person.key].sort().join('_')}`;
+          if (seenGmPairIds.has(pairKey)) continue;
+          seenGmPairIds.add(pairKey);
+
+          const anc = lcaGm.ancestor;
+          const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+
+          const partyABadge = `${gmA.roleLabel} لـ ${nameA} (${gmA.displayName})`;
+          const partyBBadge = `${gmB.roleLabel} لـ ${nameB} (${gmB.displayName})`;
+
+          const conciseBullet =
+            lcaGm.distance1 === 1 && lcaGm.distance2 === 1
+              ? `قرابة الجدات: ${gmA.roleLabel} لدى «${nameA}» («${gmA.displayName}») و${gmB.roleLabel} لدى «${nameB}» («${gmB.displayName}») هما شقيقتان ابنتا الجد «${ancDisp}».`
+              : `قرابة الجدات: تلتقي ${gmA.roleLabel} لدى «${nameA}» («${gmA.displayName}») مع ${gmB.roleLabel} لدى «${nameB}» («${gmB.displayName}») في الجد «${ancDisp}».`;
+
+          grandmotherLinks.push({
+            id: pairKey,
+            category: 'related_grandmothers',
+            title: `قرابة بين الجدات في الجد «${ancDisp}»`,
+            badge: `${partyABadge} ⬅ ${partyBBadge}`,
+            partyABadge,
+            connector: '⬅',
+            partyBBadge,
+            commonAncestor: anc,
+            conciseBullet,
+            narrative: conciseBullet,
+            fullChainText: conciseBullet,
+            visualPath: {
+              id: `vp_${pairKey}`,
+              title: 'مسار قرابة الجدات',
+              badge: 'قرابة الجدات',
+              nodes: [
+                makePersonPathNode(personA, nameA, people, isPrivacyRestricted, { isEndpointA: true, customDisplayName: nameA }),
+                makePersonPathNode(gmA.person, gmA.roleLabel, people, isPrivacyRestricted),
+                makePersonPathNode(anc, 'الجد المشترك للجدتين', people, isPrivacyRestricted, { isHighlight: true }),
+                makePersonPathNode(gmB.person, gmB.roleLabel, people, isPrivacyRestricted),
+                makePersonPathNode(personB, nameB, people, isPrivacyRestricted, { isEndpointB: true, customDisplayName: nameB })
+              ]
+            }
+          });
+        }
+      }
+    }
+  }
+
+  // Direct Grandmother (أم الأب / أم الأم) intersecting with the other party's grandfather line
+  for (const gmA of grandmothersA.filter(g => g.throughDistance === 1 && g.person)) {
+    const lcaWithB = findLowestCommonAncestor(gmA.person!.key, personB.key, people);
+    if (lcaWithB.ancestor && lcaWithB.distance1 <= 2 && lcaWithB.distance2 <= 3) {
+      const pairKey = `gmA_to_B_${gmA.person!.key}_${lcaWithB.ancestor.key}`;
+      if (!seenGmPairIds.has(pairKey)) {
+        seenGmPairIds.add(pairKey);
+        const anc = lcaWithB.ancestor;
+        const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+        const bBranch = lcaWithB.distance2 >= 1 ? lcaWithB.path2[lcaWithB.path2.length - 2] : personB;
+        const bBranchDisp = formatPersonDisplayName(bBranch, people, isPrivacyRestricted);
+
+        const partyABadge = `${gmA.roleLabel} لـ ${nameA} (${gmA.displayName})`;
+        const partyBBadge = fatherB ? `أب ${nameB} (${fatherBDisp})` : `نسب ${nameB}`;
+
+        const conciseBullet =
+          lcaWithB.distance1 === 1
+            ? `${gmA.roleLabel} لدى «${nameA}» («${gmA.displayName}») هي شقيقة «${bBranchDisp}» في عمود نسب «${nameB}»، ويجتمعان في الجد «${ancDisp}».`
+            : `تلتقي ${gmA.roleLabel} لدى «${nameA}» («${gmA.displayName}») مع عمود نسب «${nameB}» في الجد «${ancDisp}».`;
+
+        grandmotherLinks.push({
+          id: pairKey,
+          category: 'grandmother_to_grandfather',
+          title: `ارتباط ${gmA.roleLabel} لـ ${nameA} بنسب ${nameB}`,
+          badge: `${partyABadge} ⬅ ${partyBBadge}`,
+          partyABadge,
+          connector: '⬅',
+          partyBBadge,
+          commonAncestor: anc,
+          conciseBullet,
+          narrative: conciseBullet,
+          fullChainText: conciseBullet,
+          visualPath: buildVisualPathBetweenLineages(
+            `vp_${pairKey}`,
+            `مسار ارتباط ${gmA.roleLabel} بنسب ${nameB}`,
+            lcaWithB.path1,
+            lcaWithB.path2,
+            gmA.displayName,
+            nameB,
+            people,
+            isPrivacyRestricted,
+            {
+              badge: `${partyABadge} ⬅ ${partyBBadge}`,
+              prefixNodesA: [makePersonPathNode(personA, nameA, people, isPrivacyRestricted, { isEndpointA: true, customDisplayName: nameA })],
+              lcaRoleLabel: 'الجد المشترك'
+            }
+          )
+        });
+      }
+    }
+  }
+
+  for (const gmB of grandmothersB.filter(g => g.throughDistance === 1 && g.person)) {
+    const lcaWithA = findLowestCommonAncestor(personA.key, gmB.person!.key, people);
+    if (lcaWithA.ancestor && lcaWithA.distance2 <= 2 && lcaWithA.distance1 <= 3) {
+      const pairKey = `gmB_to_A_${gmB.person!.key}_${lcaWithA.ancestor.key}`;
+      if (!seenGmPairIds.has(pairKey)) {
+        seenGmPairIds.add(pairKey);
+        const anc = lcaWithA.ancestor;
+        const ancDisp = formatPersonDisplayName(anc, people, isPrivacyRestricted);
+        const aBranch = lcaWithA.distance1 >= 1 ? lcaWithA.path1[lcaWithA.path1.length - 2] : personA;
+        const aBranchDisp = formatPersonDisplayName(aBranch, people, isPrivacyRestricted);
+
+        const partyABadge = fatherA ? `أب ${nameA} (${fatherADisp})` : `نسب ${nameA}`;
+        const partyBBadge = `${gmB.roleLabel} لـ ${nameB} (${gmB.displayName})`;
+
+        const conciseBullet =
+          lcaWithA.distance2 === 1
+            ? `${gmB.roleLabel} لدى «${nameB}» («${gmB.displayName}») هي شقيقة «${aBranchDisp}» في عمود نسب «${nameA}»، ويجتمعان في الجد «${ancDisp}».`
+            : `تلتقي ${gmB.roleLabel} لدى «${nameB}» («${gmB.displayName}») مع عمود نسب «${nameA}» في الجد «${ancDisp}».`;
+
+        grandmotherLinks.push({
+          id: pairKey,
+          category: 'grandmother_to_grandfather',
+          title: `ارتباط ${gmB.roleLabel} لـ ${nameB} بنسب ${nameA}`,
+          badge: `${partyABadge} ⬅ ${partyBBadge}`,
+          partyABadge,
+          connector: '⬅',
+          partyBBadge,
+          commonAncestor: anc,
+          conciseBullet,
+          narrative: conciseBullet,
+          fullChainText: conciseBullet,
+          visualPath: buildVisualPathBetweenLineages(
+            `vp_${pairKey}`,
+            `مسار ارتباط نسب ${nameA} بـ ${gmB.roleLabel}`,
+            lcaWithA.path1,
+            lcaWithA.path2,
+            nameA,
+            gmB.displayName,
+            people,
+            isPrivacyRestricted,
+            {
+              badge: `${partyABadge} ⬅ ${partyBBadge}`,
+              suffixNodesB: [makePersonPathNode(personB, nameB, people, isPrivacyRestricted, { isEndpointB: true, customDisplayName: nameB })],
+              lcaRoleLabel: 'الجد المشترك'
+            }
+          )
+        });
+      }
+    }
+  }
+
+  const hasCrossOrGrandmotherRelation = Boolean(
+    paternalAToMaternalB || maternalAToPaternalB || grandmotherLinks.length > 0
+  );
+
+  let summaryTitle = 'لا توجد تقاطعات إضافية مسجلة';
+  let summaryExplanation = `لا يوجد تقاطع إضافي مسجل بين عمود والد ووالدة «${nameA}» و«${nameB}» أو جداتهما بخلاف النسب الأبوي الأساسي.`;
+
+  if (hasCrossOrGrandmotherRelation) {
+    const bullets: string[] = [];
+    if (paternalAToMaternalB) bullets.push(paternalAToMaternalB.conciseBullet);
+    if (maternalAToPaternalB) bullets.push(maternalAToPaternalB.conciseBullet);
+    grandmotherLinks.forEach(g => bullets.push(g.conciseBullet));
+    summaryTitle = paternalAToMaternalB?.title || maternalAToPaternalB?.title || grandmotherLinks[0]?.title || 'تقاطع الأب والأم والجدات';
+    summaryExplanation = bullets.join(' • ');
+  }
+
+  return {
+    hasCrossOrGrandmotherRelation,
+    summaryTitle,
+    summaryExplanation,
+    paternalAToMaternalB,
+    maternalAToPaternalB,
+    grandmotherLinks,
+    grandmothersA,
+    grandmothersB
+  };
+}
+
+/**
+ * Section 4: Analyzes in-law and spousal relationships in concise bullets using real names and dual badges
  */
 export function analyzeInLawKinship(
   personA: ProcessedPerson,
   personB: ProcessedPerson,
-  people: Map<string, ProcessedPerson>
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
 ): InLawKinship {
   let hasInLawRelation = false;
   let isDirectSpouse = false;
@@ -315,6 +1344,9 @@ export function analyzeInLawKinship(
   let spousalExplanation = '';
   let areBrothersInLaw = false;
   let brotherInLawExplanation = '';
+  const conciseBullets: string[] = [];
+  const bulletCards: InLawBulletCard[] = [];
+  const visualPaths: KinshipVisualPath[] = [];
 
   const inLawsA: InLawDetail[] = [];
   const inLawsB: InLawDetail[] = [];
@@ -322,122 +1354,223 @@ export function analyzeInLawKinship(
   const spousesA = personA.spouses || [];
   const spousesB = personB.spouses || [];
 
+  const { nameA, nameB } = getDistinctPairNames(personA, personB, people, isPrivacyRestricted);
+
+  const fatherA = personA.parentKey ? people.get(personA.parentKey) || null : null;
+  const fatherB = personB.parentKey ? people.get(personB.parentKey) || null : null;
+  const motherPersonA = resolveMotherPerson(personA.mother, fatherA, people);
+  const motherPersonB = resolveMotherPerson(personB.mother, fatherB, people);
+
   // 1. Direct Marriage
-  const aMarriedToB = spousesA.some(s => s.personKey === personB.key || s.name.trim() === personB.name.trim());
-  const bMarriedToA = spousesB.some(s => s.personKey === personA.key || s.name.trim() === personA.name.trim());
+  const aMarriedToB = spousesA.some(s => s.personKey === personB.key || normalizeArabic(s.name) === normalizeArabic(personB.name));
+  const bMarriedToA = spousesB.some(s => s.personKey === personA.key || normalizeArabic(s.name) === normalizeArabic(personA.name));
 
   if (aMarriedToB || bMarriedToA) {
     hasInLawRelation = true;
     isDirectSpouse = true;
     spousalTitle = 'علاقة زوجية مباشرة (زوج وزوجة)';
-    spousalExplanation = `«${personA.name}» و«${personB.name}» تربطهما علاقة زوجية مباشرة.`;
+    spousalExplanation = `«${nameA}» و«${nameB}» تربطهما علاقة زواج ومصاهرة مباشرة.`;
+    conciseBullets.push(spousalExplanation);
+    bulletCards.push({
+      id: 'inlaw_direct',
+      partyABadge: `${nameA} (القرين)`,
+      connector: '🤝',
+      partyBBadge: `${nameB} (القرين)`,
+      text: spousalExplanation
+    });
   }
 
-  // 2. Person A's wives in-law relations with Person B
-  spousesA.forEach(s => {
-    if (s.isFromFamily && s.personKey) {
-      const wifePerson = people.get(s.personKey);
-      if (wifePerson) {
-        // Wife is B's daughter
-        if (wifePerson.parentKey === personB.key) {
+  // 2. Person A's spouses in-law relations with Person B
+  spousesA.forEach((s, idx) => {
+    const wifePerson = s.personKey ? people.get(s.personKey) || null : null;
+    const spDisp = formatFemaleInfoDisplayName(s, wifePerson, people, isPrivacyRestricted);
+
+    if (s.isFromFamily && wifePerson && wifePerson.key !== personB.key) {
+      if (wifePerson.parentKey === personB.key) {
+        hasInLawRelation = true;
+        const exp = `صهر مباشر: «${nameA}» متزوج من «${spDisp}» ابنة «${nameB}».`;
+        inLawsA.push({
+          spouse: s,
+          wifePerson,
+          spouseDisplayName: spDisp,
+          relationType: 'wife_is_daughter',
+          title: 'صهر مباشر (زوج ابنته)',
+          explanation: exp
+        });
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_a_dau_${idx}`,
+          partyABadge: `${nameA} (زوج ${spDisp})`,
+          connector: '🤝',
+          partyBBadge: `${nameB} (والد الزوجة)`,
+          text: exp
+        });
+      } else if (wifePerson.parentKey && personB.parentKey && wifePerson.parentKey === personB.parentKey) {
+        hasInLawRelation = true;
+        const exp = `صهر مباشر: «${nameA}» متزوج من «${spDisp}» شقيقة «${nameB}».`;
+        inLawsA.push({
+          spouse: s,
+          wifePerson,
+          spouseDisplayName: spDisp,
+          relationType: 'wife_is_sister',
+          title: 'صهر مباشر (زوج أخته)',
+          explanation: exp
+        });
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_a_sis_${idx}`,
+          partyABadge: `${nameA} (زوج ${spDisp})`,
+          connector: '🤝',
+          partyBBadge: `${nameB} (شقيق الزوجة)`,
+          text: exp
+        });
+      } else if (
+        (fatherB && wifePerson.parentKey && wifePerson.parentKey === fatherB.parentKey && wifePerson.key !== fatherB.key) ||
+        (motherPersonB && wifePerson.parentKey && wifePerson.parentKey === motherPersonB.parentKey && wifePerson.key !== motherPersonB.key)
+      ) {
+        hasInLawRelation = true;
+        const isPaternalAunt = fatherB && wifePerson.parentKey === fatherB.parentKey;
+        const title = isPaternalAunt ? `زوج عمة ${nameB}` : `زوج خالة ${nameB}`;
+        const exp = `${title}: «${nameA}» متزوج من «${spDisp}» (${isPaternalAunt ? 'عمة' : 'خالة'} «${nameB}»).`;
+        inLawsA.push({
+          spouse: s,
+          wifePerson,
+          spouseDisplayName: spDisp,
+          relationType: 'wife_is_aunt',
+          title,
+          explanation: exp
+        });
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_a_aunt_${idx}`,
+          partyABadge: `${nameA} (زوج ${spDisp})`,
+          connector: '🤝',
+          partyBBadge: `${isPaternalAunt ? 'عمة' : 'خالة'} ${nameB} (${spDisp})`,
+          text: exp
+        });
+      } else {
+        const lca = findLowestCommonAncestor(wifePerson.key, personB.key, people);
+        if (lca.ancestor && lca.distance1 <= 3 && lca.distance2 <= 3) {
           hasInLawRelation = true;
+          const ancDisp = formatPersonDisplayName(lca.ancestor, people, isPrivacyRestricted);
+          const exp = `مصاهرة عائلية: زوجة «${nameA}» («${spDisp}») تلتقي مع «${nameB}» في الجد «${ancDisp}».`;
           inLawsA.push({
             spouse: s,
             wifePerson,
-            relationType: 'wife_is_daughter',
-            title: 'صهر مباشر (زوج ابنته)',
-            explanation: `«${personA.name}» هو صهر لـ «${personB.name}»؛ حيث تزوج من ابنته «${wifePerson.name}».`
+            spouseDisplayName: spDisp,
+            relationType: 'wife_is_cousin',
+            title: 'مصاهرة من بنات العمومة',
+            explanation: exp
           });
-        }
-        // Wife is B's sister
-        else if (wifePerson.parentKey && personB.parentKey && wifePerson.parentKey === personB.parentKey) {
-          hasInLawRelation = true;
-          inLawsA.push({
-            spouse: s,
-            wifePerson,
-            relationType: 'wife_is_sister',
-            title: 'صهر مباشر (زوج أخته)',
-            explanation: `«${personA.name}» هو صهر لـ «${personB.name}»؛ حيث تزوج من شقيقته «${wifePerson.name}».`
+          conciseBullets.push(exp);
+          bulletCards.push({
+            id: `inlaw_a_cous_${idx}`,
+            partyABadge: `زوجة ${nameA} (${spDisp})`,
+            connector: '⬅',
+            partyBBadge: `نسب ${nameB}`,
+            text: exp
           });
-        }
-        // Wife is cousin or related to B
-        else {
-          const lca = findLowestCommonAncestor(wifePerson.key, personB.key, people);
-          if (lca.ancestor && lca.distance1 <= 3 && lca.distance2 <= 3) {
-            hasInLawRelation = true;
-            inLawsA.push({
-              spouse: s,
-              wifePerson,
-              relationType: 'wife_is_cousin',
-              title: 'نسيب عائلي (مصاهرة من العائلة)',
-              explanation: `«${personA.name}» متزوج من «${wifePerson.name}» (ابنة عم ${personB.name})، ويلتقيان في الجد «${lca.ancestor.name}».`
-            });
-          }
         }
       }
-    } else if (s.familyOrigin) {
-      inLawsA.push({
-        spouse: s,
-        relationType: 'external_family',
-        title: `مصاهرة مع عائلة ${s.familyOrigin}`,
-        explanation: `زوجة «${personA.name}» («${s.name}») كريمة عائلة ${s.familyOrigin}.`
-      });
     }
   });
 
-  // 3. Person B's wives in-law relations with Person A
-  spousesB.forEach(s => {
-    if (s.isFromFamily && s.personKey) {
-      const wifePerson = people.get(s.personKey);
-      if (wifePerson) {
-        // Wife is A's daughter
-        if (wifePerson.parentKey === personA.key) {
+  // 3. Person B's spouses in-law relations with Person A
+  spousesB.forEach((s, idx) => {
+    const wifePerson = s.personKey ? people.get(s.personKey) || null : null;
+    const spDisp = formatFemaleInfoDisplayName(s, wifePerson, people, isPrivacyRestricted);
+
+    if (s.isFromFamily && wifePerson && wifePerson.key !== personA.key) {
+      if (wifePerson.parentKey === personA.key) {
+        hasInLawRelation = true;
+        const exp = `صهر مباشر: «${nameB}» متزوج من «${spDisp}» ابنة «${nameA}».`;
+        inLawsB.push({
+          spouse: s,
+          wifePerson,
+          spouseDisplayName: spDisp,
+          relationType: 'wife_is_daughter',
+          title: `والد الزوجة (${nameB} زوج ابنته)`,
+          explanation: exp
+        });
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_b_dau_${idx}`,
+          partyABadge: `${nameA} (والد الزوجة)`,
+          connector: '🤝',
+          partyBBadge: `${nameB} (زوج ${spDisp})`,
+          text: exp
+        });
+      } else if (wifePerson.parentKey && personA.parentKey && wifePerson.parentKey === personA.parentKey) {
+        hasInLawRelation = true;
+        const exp = `صهر مباشر: «${nameB}» متزوج من «${spDisp}» شقيقة «${nameA}».`;
+        inLawsB.push({
+          spouse: s,
+          wifePerson,
+          spouseDisplayName: spDisp,
+          relationType: 'wife_is_sister',
+          title: `شقيق الزوجة (${nameB} زوج أخته)`,
+          explanation: exp
+        });
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_b_sis_${idx}`,
+          partyABadge: `${nameA} (شقيق الزوجة)`,
+          connector: '🤝',
+          partyBBadge: `${nameB} (زوج ${spDisp})`,
+          text: exp
+        });
+      } else if (
+        (fatherA && wifePerson.parentKey && wifePerson.parentKey === fatherA.parentKey && wifePerson.key !== fatherA.key) ||
+        (motherPersonA && wifePerson.parentKey && wifePerson.parentKey === motherPersonA.parentKey && wifePerson.key !== motherPersonA.key)
+      ) {
+        hasInLawRelation = true;
+        const isPaternalAunt = fatherA && wifePerson.parentKey === fatherA.parentKey;
+        const title = isPaternalAunt ? `زوج عمة ${nameA}` : `زوج خالة ${nameA}`;
+        const exp = `${title}: «${nameB}» متزوج من «${spDisp}» (${isPaternalAunt ? 'عمة' : 'خالة'} «${nameA}»).`;
+        inLawsB.push({
+          spouse: s,
+          wifePerson,
+          spouseDisplayName: spDisp,
+          relationType: 'wife_is_aunt',
+          title,
+          explanation: exp
+        });
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_b_aunt_${idx}`,
+          partyABadge: `${isPaternalAunt ? 'عمة' : 'خالة'} ${nameA} (${spDisp})`,
+          connector: '🤝',
+          partyBBadge: `${nameB} (زوج ${spDisp})`,
+          text: exp
+        });
+      } else {
+        const lca = findLowestCommonAncestor(personA.key, wifePerson.key, people);
+        if (lca.ancestor && lca.distance1 <= 3 && lca.distance2 <= 3) {
           hasInLawRelation = true;
+          const ancDisp = formatPersonDisplayName(lca.ancestor, people, isPrivacyRestricted);
+          const exp = `مصاهرة عائلية: زوجة «${nameB}» («${spDisp}») تلتقي مع «${nameA}» في الجد «${ancDisp}».`;
           inLawsB.push({
             spouse: s,
             wifePerson,
-            relationType: 'wife_is_daughter',
-            title: 'صهر مباشر (زوج ابنته)',
-            explanation: `«${personB.name}» هو صهر لـ «${personA.name}»؛ حيث تزوج من ابنته «${wifePerson.name}».`
+            spouseDisplayName: spDisp,
+            relationType: 'wife_is_cousin',
+            title: 'مصاهرة من بنات العمومة',
+            explanation: exp
           });
-        }
-        // Wife is A's sister
-        else if (wifePerson.parentKey && personA.parentKey && wifePerson.parentKey === personA.parentKey) {
-          hasInLawRelation = true;
-          inLawsB.push({
-            spouse: s,
-            wifePerson,
-            relationType: 'wife_is_sister',
-            title: 'صهر مباشر (زوج أخته)',
-            explanation: `«${personB.name}» هو صهر لـ «${personA.name}»؛ حيث تزوج من شقيقته «${wifePerson.name}».`
+          conciseBullets.push(exp);
+          bulletCards.push({
+            id: `inlaw_b_cous_${idx}`,
+            partyABadge: `نسب ${nameA}`,
+            connector: '⬅',
+            partyBBadge: `زوجة ${nameB} (${spDisp})`,
+            text: exp
           });
-        }
-        // Wife is cousin or related to A
-        else {
-          const lca = findLowestCommonAncestor(wifePerson.key, personA.key, people);
-          if (lca.ancestor && lca.distance1 <= 3 && lca.distance2 <= 3) {
-            hasInLawRelation = true;
-            inLawsB.push({
-              spouse: s,
-              wifePerson,
-              relationType: 'wife_is_cousin',
-              title: 'نسيب عائلي (مصاهرة من العائلة)',
-              explanation: `«${personB.name}» متزوج من «${wifePerson.name}» (ابنة عم ${personA.name})، ويلتقيان في الجد «${lca.ancestor.name}».`
-            });
-          }
         }
       }
-    } else if (s.familyOrigin) {
-      inLawsB.push({
-        spouse: s,
-        relationType: 'external_family',
-        title: `مصاهرة مع عائلة ${s.familyOrigin}`,
-        explanation: `زوجة «${personB.name}» («${s.name}») كريمة عائلة ${s.familyOrigin}.`
-      });
     }
   });
 
-  // 4. العدلاء (Both married to sisters from the family)
+  // 4. العدلاء (Both married to sisters)
   for (const sA of spousesA) {
     if (!sA.isFromFamily || !sA.personKey) continue;
     const wA = people.get(sA.personKey);
@@ -452,36 +1585,67 @@ export function analyzeInLawKinship(
         hasInLawRelation = true;
         areBrothersInLaw = true;
         const fatherInLaw = people.get(wA.parentKey);
-        brotherInLawExplanation = `«${personA.name}» و«${personB.name}» عديلان؛ متزوجان من شقيقتين هما «${wA.name}» و«${wB.name}» كريمتا «${fatherInLaw?.name || 'والدهما'}».`;
+        const wADisp = formatPersonDisplayName(wA, people, isPrivacyRestricted);
+        const wBDisp = formatPersonDisplayName(wB, people, isPrivacyRestricted);
+        const fatherInLawDisp = formatPersonDisplayName(fatherInLaw, people, isPrivacyRestricted);
+        brotherInLawExplanation = `عديلان: «${nameA}» و«${nameB}» متزوجان من الشقيقتين «${wADisp}» و«${wBDisp}» ابنتي «${fatherInLawDisp}».`;
+        conciseBullets.push(brotherInLawExplanation);
+        bulletCards.push({
+          id: 'inlaw_brothers_in_law',
+          partyABadge: `زوجة ${nameA} (${wADisp})`,
+          connector: '🤝',
+          partyBBadge: `زوجة ${nameB} (${wBDisp})`,
+          text: brotherInLawExplanation
+        });
         break;
       }
     }
     if (areBrothersInLaw) break;
   }
 
-  // Derive top spousal title if not set yet
+  // 5. Intermarriage between direct children
+  const childrenA = personA.childrenKeys.map(k => people.get(k)).filter((c): c is ProcessedPerson => Boolean(c && !c.deleted));
+  const childrenB = personB.childrenKeys.map(k => people.get(k)).filter((c): c is ProcessedPerson => Boolean(c && !c.deleted));
+  const childBKeys = new Set(childrenB.map(c => c.key));
+
+  for (const childA of childrenA) {
+    for (const sp of childA.spouses || []) {
+      if (sp.personKey && childBKeys.has(sp.personKey)) {
+        const childB = people.get(sp.personKey)!;
+        hasInLawRelation = true;
+        const cADisp = formatPersonDisplayName(childA, people, isPrivacyRestricted);
+        const cBDisp = formatPersonDisplayName(childB, people, isPrivacyRestricted);
+        const exp = `مصاهرة الأبناء: اقترن «${cADisp}» (${childA.gender === 'f' ? 'ابنة' : 'ابن'} «${nameA}») بـ «${cBDisp}» (${childB.gender === 'f' ? 'ابنة' : 'ابن'} «${nameB}»).`;
+        conciseBullets.push(exp);
+        bulletCards.push({
+          id: `inlaw_children_${childA.key}_${childB.key}`,
+          partyABadge: `${childA.gender === 'f' ? 'ابنة' : 'ابن'} ${nameA} (${cADisp})`,
+          connector: '🤝',
+          partyBBadge: `${childB.gender === 'f' ? 'ابنة' : 'ابن'} ${nameB} (${cBDisp})`,
+          text: exp
+        });
+        inLawsA.push({
+          spouse: sp,
+          wifePerson: childB,
+          spouseDisplayName: cBDisp,
+          relationType: 'children_intermarriage',
+          title: `مصاهرة مباشرة بين أبناء ${nameA} و${nameB}`,
+          explanation: exp
+        });
+      }
+    }
+  }
+
   if (!spousalTitle) {
     if (areBrothersInLaw) {
-      spousalTitle = 'عدلاء (متزوجان من شقيقتين)';
+      spousalTitle = 'عديلان (متزوجان من شقيقتين)';
       spousalExplanation = brotherInLawExplanation;
-    } else if (inLawsA.some(i => i.relationType === 'wife_is_daughter')) {
-      spousalTitle = 'صهر (زوج ابنته)';
-      spousalExplanation = inLawsA.find(i => i.relationType === 'wife_is_daughter')!.explanation;
-    } else if (inLawsB.some(i => i.relationType === 'wife_is_daughter')) {
-      spousalTitle = 'صهر (زوج ابنته)';
-      spousalExplanation = inLawsB.find(i => i.relationType === 'wife_is_daughter')!.explanation;
-    } else if (inLawsA.some(i => i.relationType === 'wife_is_sister')) {
-      spousalTitle = 'صهر (زوج أخته)';
-      spousalExplanation = inLawsA.find(i => i.relationType === 'wife_is_sister')!.explanation;
-    } else if (inLawsB.some(i => i.relationType === 'wife_is_sister')) {
-      spousalTitle = 'صهر (زوج أخته)';
-      spousalExplanation = inLawsB.find(i => i.relationType === 'wife_is_sister')!.explanation;
-    } else if (inLawsA.some(i => i.relationType === 'wife_is_cousin')) {
-      spousalTitle = 'نسيب عائلي (مصاهرة في العائلة)';
-      spousalExplanation = inLawsA.find(i => i.relationType === 'wife_is_cousin')!.explanation;
-    } else if (inLawsB.some(i => i.relationType === 'wife_is_cousin')) {
-      spousalTitle = 'نسيب عائلي (مصاهرة في العائلة)';
-      spousalExplanation = inLawsB.find(i => i.relationType === 'wife_is_cousin')!.explanation;
+    } else if (inLawsA.length > 0) {
+      spousalTitle = inLawsA[0].title;
+      spousalExplanation = inLawsA[0].explanation;
+    } else if (inLawsB.length > 0) {
+      spousalTitle = inLawsB[0].title;
+      spousalExplanation = inLawsB[0].explanation;
     }
   }
 
@@ -490,41 +1654,182 @@ export function analyzeInLawKinship(
     isDirectSpouse,
     spousalTitle,
     spousalExplanation,
+    conciseBullets,
+    bulletCards,
+    detailedNarratives: conciseBullets,
     inLawsA,
     inLawsB,
     areBrothersInLaw,
-    brotherInLawExplanation
+    brotherInLawExplanation,
+    visualPaths
+  };
+}
+
+/**
+ * Builds the concise Paternal Analysis (أب ⬅ أب) using real names
+ */
+function buildPaternalDetailedAnalysis(
+  personA: ProcessedPerson,
+  personB: ProcessedPerson,
+  commonAncestor: ProcessedPerson | null,
+  distanceA: number,
+  distanceB: number,
+  pathFromAToAncestor: ProcessedPerson[],
+  pathFromBToAncestor: ProcessedPerson[],
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean
+): PaternalDetailedAnalysis {
+  const { nameA, nameB } = getDistinctPairNames(personA, personB, people, isPrivacyRestricted);
+  const fatherA = personA.parentKey ? people.get(personA.parentKey) : null;
+  const fatherB = personB.parentKey ? people.get(personB.parentKey) : null;
+
+  const partyABadge = fatherA
+    ? `أب ${nameA} (${formatPersonDisplayName(fatherA, people, isPrivacyRestricted)})`
+    : `نسب ${nameA}`;
+  const partyBBadge = fatherB
+    ? `أب ${nameB} (${formatPersonDisplayName(fatherB, people, isPrivacyRestricted)})`
+    : `نسب ${nameB}`;
+
+  if (!commonAncestor || distanceA < 0 || distanceB < 0) {
+    return {
+      partyABadge,
+      partyBBadge,
+      commonAncestorConciseLine: `لا يوجد جد أبوي مشترك مسجل بين «${nameA}» و«${nameB}».`,
+      commonAncestorNarrative: `لا يوجد جد أبوي مشترك مسجل بين «${nameA}» و«${nameB}».`,
+      branchingPoint: null,
+      branchingPointConciseLine: '',
+      branchingPointNarrative: '',
+      unclesAndGrandfathersNarrative: '',
+      fullChainUpA: formatPatronymicChain(pathFromAToAncestor, people, isPrivacyRestricted),
+      fullChainDownB: formatPatronymicChain(pathFromBToAncestor, people, isPrivacyRestricted),
+      fullChainNarrative: '',
+      visualPath: {
+        id: 'pat-none',
+        title: 'مسار النسب الأبوي',
+        nodes: []
+      }
+    };
+  }
+
+  const ancDisp = formatPersonDisplayName(commonAncestor, people, isPrivacyRestricted);
+
+  let commonAncestorConciseLine = '';
+  if (distanceA === 0 && distanceB === 0) {
+    commonAncestorConciseLine = `الاسم المختار في الخانتين يمثل نفس الفرد: «${nameA}» (الجيل ${personA.generation}).`;
+  } else if (distanceA === 0) {
+    commonAncestorConciseLine = `«${nameA}» (الجيل ${personA.generation}) هو الجد المباشر لـ «${nameB}» بفارق ${formatGenerationsCount(distanceB)}.`;
+  } else if (distanceB === 0) {
+    commonAncestorConciseLine = `«${nameB}» (الجيل ${personB.generation}) هو الجد المباشر لـ «${nameA}» بفارق ${formatGenerationsCount(distanceA)}.`;
+  } else {
+    commonAncestorConciseLine = `الجد «${ancDisp}» (الجيل ${commonAncestor.generation}) — يبعد ${formatGenerationsCount(distanceA)} عن «${nameA}»، ويبعد ${formatGenerationsCount(distanceB)} عن «${nameB}».`;
+  }
+
+  let branchingPoint: PaternalDetailedAnalysis['branchingPoint'] = null;
+  let branchingPointConciseLine = '';
+
+  if (distanceA >= 1 && distanceB >= 1) {
+    const sonA = pathFromAToAncestor[pathFromAToAncestor.length - 2];
+    const sonB = pathFromBToAncestor[pathFromBToAncestor.length - 2];
+    const sonADisp = formatPersonDisplayName(sonA, people, isPrivacyRestricted);
+    const sonBDisp = formatPersonDisplayName(sonB, people, isPrivacyRestricted);
+
+    branchingPoint = {
+      ancestor: commonAncestor,
+      sonA,
+      sonB,
+      sonADisplayName: sonADisp,
+      sonBDisplayName: sonBDisp
+    };
+
+    if (distanceA === 1 && distanceB === 1) {
+      branchingPointConciseLine = `«${nameA}» و«${nameB}» أخوان شقيقان/لأب يتفرعان مباشرة من أبيهما «${ancDisp}».`;
+    } else {
+      branchingPointConciseLine = `يتفرع «${nameA}» من «${sonADisp}» بينما يتفرع «${nameB}» من أخيه «${sonBDisp}»، وهما أبناء الجد «${ancDisp}».`;
+    }
+  }
+
+  const fullChainUpA = formatPatronymicChain(pathFromAToAncestor, people, isPrivacyRestricted);
+  const fullChainDownB = formatPatronymicChain(pathFromBToAncestor, people, isPrivacyRestricted);
+
+  const visualPath = buildVisualPathBetweenLineages(
+    'paternal-main-path',
+    `سلسلة النسب الأبوي بين ${nameA} و${nameB} حتى الجد المشترك`,
+    pathFromAToAncestor,
+    pathFromBToAncestor,
+    nameA,
+    nameB,
+    people,
+    isPrivacyRestricted,
+    {
+      badge: `${partyABadge} ⬅ ${partyBBadge}`,
+      lcaRoleLabel: 'الجد المشترك'
+    }
+  );
+
+  return {
+    partyABadge,
+    partyBBadge,
+    commonAncestorConciseLine,
+    commonAncestorNarrative: commonAncestorConciseLine,
+    branchingPoint,
+    branchingPointConciseLine,
+    branchingPointNarrative: branchingPointConciseLine,
+    unclesAndGrandfathersNarrative: branchingPointConciseLine,
+    fullChainUpA,
+    fullChainDownB,
+    fullChainNarrative: `${fullChainUpA} ↔ ${fullChainDownB}`,
+    visualPath
   };
 }
 
 /**
  * Analyzes the complete genealogical relationship between Person A and Person B.
- * Person A is the subject (الطرف الأول), Person B is the reference (الطرف الثاني).
- * Explains paternal, maternal, and in-law kinship thoroughly.
  */
 export function analyzeKinship(
   keyA: string,
   keyB: string,
-  people: Map<string, ProcessedPerson>
+  people: Map<string, ProcessedPerson>,
+  isPrivacyRestricted: boolean = false
 ): KinshipResult | null {
   const personA = people.get(keyA);
   const personB = people.get(keyB);
 
   if (!personA || !personB) return null;
 
-  // Compute Maternal & In-law kinship first
-  const maternalKinship = analyzeMaternalKinship(personA, personB, people);
-  const inLawKinship = analyzeInLawKinship(personA, personB, people);
+  const { nameA: personADisplayName, nameB: personBDisplayName } = getDistinctPairNames(
+    personA,
+    personB,
+    people,
+    isPrivacyRestricted
+  );
 
-  // 1. Same Person
+  const maternalKinship = analyzeMaternalKinship(personA, personB, people, isPrivacyRestricted);
+  const crossAndGrandmothersKinship = analyzeCrossAndGrandmothersKinship(personA, personB, people, isPrivacyRestricted);
+  const inLawKinship = analyzeInLawKinship(personA, personB, people, isPrivacyRestricted);
+
   if (keyA === keyB) {
+    const paternalAnalysis = buildPaternalDetailedAnalysis(
+      personA,
+      personB,
+      personA,
+      0,
+      0,
+      [personA],
+      [personB],
+      people,
+      isPrivacyRestricted
+    );
     return {
       personA,
       personB,
+      personADisplayName,
+      personBDisplayName,
       commonAncestor: personA,
       relationshipTitle: 'نفس الشخص (المقارنة مع الذات)',
       relationshipType: 'self',
-      narrativeExplanation: `الطرف الأول والطرف الثاني هما نفس الفرد: «${personA.name}».`,
+      narrativeExplanation: `الاسم المختار في الخانتين يمثل نفس الفرد: «${personADisplayName}».`,
+      executiveSummary: `الاسم المختار في الخانتين يمثل نفس الفرد: «${personADisplayName}».`,
+      paternalAnalysis,
       distanceA: 0,
       distanceB: 0,
       generationDiff: 0,
@@ -535,14 +1840,15 @@ export function analyzeKinship(
       branchNameA: personA.branchName || 'الأصل',
       branchNameB: personB.branchName || 'الأصل',
       maternalKinship,
-      inLawKinship
+      crossAndGrandmothersKinship,
+      inLawKinship,
+      isPrivacyRestricted
     };
   }
 
   const pathA = getAncestorsPath(keyA, people);
   const pathB = getAncestorsPath(keyB, people);
 
-  // Find Lowest Common Ancestor (LCA)
   let commonAncestor: ProcessedPerson | null = null;
   let distanceA = -1;
   let distanceB = -1;
@@ -561,13 +1867,29 @@ export function analyzeKinship(
   }
 
   if (!commonAncestor) {
+    const paternalAnalysis = buildPaternalDetailedAnalysis(
+      personA,
+      personB,
+      null,
+      -1,
+      -1,
+      pathA,
+      pathB,
+      people,
+      isPrivacyRestricted
+    );
+
     return {
       personA,
       personB,
+      personADisplayName,
+      personBDisplayName,
       commonAncestor: null,
       relationshipTitle: 'لا يوجد جد أبوي مشترك مسجل',
       relationshipType: 'distant',
-      narrativeExplanation: `لم يتم العثور على جد مشترك من جهة الأب في المشجر يجمع بين «${personA.name}» و«${personB.name}».`,
+      narrativeExplanation: `لم يتم العثور على جد مشترك من جهة الأب في المشجر يجمع بين «${personADisplayName}» و«${personBDisplayName}».`,
+      executiveSummary: `لم يتم العثور على جد مشترك من جهة الأب في المشجر يجمع بين «${personADisplayName}» و«${personBDisplayName}».`,
+      paternalAnalysis,
       distanceA: -1,
       distanceB: -1,
       generationDiff: personA.generation - personB.generation,
@@ -578,14 +1900,15 @@ export function analyzeKinship(
       branchNameA: personA.branchName || 'فرع',
       branchNameB: personB.branchName || 'فرع',
       maternalKinship,
-      inLawKinship
+      crossAndGrandmothersKinship,
+      inLawKinship,
+      isPrivacyRestricted
     };
   }
 
   const pathFromAToAncestor = pathA.slice(0, distanceA + 1);
   const pathFromBToAncestor = pathB.slice(0, distanceB + 1);
 
-  // Full lineage chain from A up to Ancestor, then down to B
   const fullLineageChain: ProcessedPerson[] = [
     ...pathFromAToAncestor,
     ...pathFromBToAncestor.slice(0, -1).reverse()
@@ -594,153 +1917,154 @@ export function analyzeKinship(
   const isMaleA = personA.gender === 'm';
   const genDiff = personA.generation - personB.generation;
   const isSameBranch = personA.branch === personB.branch;
+  const ancDisp = formatPersonDisplayName(commonAncestor, people, isPrivacyRestricted);
 
   let relationshipTitle = '';
   let relationshipType: KinshipResult['relationshipType'] = 'cousin';
   let narrativeExplanation = '';
 
-  // Case: A is an ancestor of B
   if (distanceA === 0 && distanceB > 0) {
     relationshipType = 'ancestor';
     if (distanceB === 1) {
-      relationshipTitle = isMaleA ? 'والد (أب)' : 'والدة (أم)';
-      narrativeExplanation = `«${personA.name}» هو الوالد المباشر لـ «${personB.name}».`;
+      relationshipTitle = isMaleA ? 'والد مباشر (أب)' : 'والدة مباشرة (أم)';
+      narrativeExplanation = `«${personADisplayName}» هو الوالد المباشر لـ «${personBDisplayName}».`;
     } else if (distanceB === 2) {
       relationshipTitle = isMaleA ? 'جد مباشر' : 'جدة مباشرة';
       const mid = pathFromBToAncestor[1];
-      narrativeExplanation = `«${personA.name}» هو الجد لـ «${personB.name}» (والد ${mid?.name}).`;
+      narrativeExplanation = `«${personADisplayName}» هو الجد المباشر لـ «${personBDisplayName}» (والد «${formatPersonDisplayName(mid, people, isPrivacyRestricted)}»).`;
     } else if (distanceB === 3) {
       relationshipTitle = isMaleA ? 'والد الجد (الجد الثاني)' : 'والدة الجد';
-      narrativeExplanation = `«${personA.name}» هو والد جد «${personB.name}» بفارق ثلاثة أجيال.`;
+      narrativeExplanation = `«${personADisplayName}» هو والد جد «${personBDisplayName}» بفارق ثلاثة أجيال.`;
     } else {
-      relationshipTitle = `جد من الجيل (${distanceB})`;
-      narrativeExplanation = `«${personA.name}» هو جد أعلى لـ «${personB.name}» يفصل بينهما ${distanceB} أجيال.`;
+      relationshipTitle = `جد أعلى من الجيل (${distanceB})`;
+      narrativeExplanation = `«${personADisplayName}» هو جد أعلى لـ «${personBDisplayName}» يفصل بينهما ${distanceB} أجيال.`;
     }
-  }
-  // Case: B is an ancestor of A (A is descendant of B)
-  else if (distanceB === 0 && distanceA > 0) {
+  } else if (distanceB === 0 && distanceA > 0) {
     relationshipType = 'descendant';
     if (distanceA === 1) {
       relationshipTitle = isMaleA ? 'ابن مباشر' : 'ابنة مباشرة';
-      narrativeExplanation = `«${personA.name}» هو ابن مباشر لـ «${personB.name}».`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن مباشر' : 'ابنة مباشرة'} لـ «${personBDisplayName}».`;
     } else if (distanceA === 2) {
       relationshipTitle = isMaleA ? 'حفيد مباشر' : 'حفيدة مباشرة';
       const mid = pathFromAToAncestor[1];
-      narrativeExplanation = `«${personA.name}» هو حفيد لـ «${personB.name}» (ابن ${mid?.name}).`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'حفيد' : 'حفيدة'} لـ «${personBDisplayName}» (${isMaleA ? 'ابن' : 'ابنة'} «${formatPersonDisplayName(mid, people, isPrivacyRestricted)}»).`;
     } else if (distanceA === 3) {
       relationshipTitle = isMaleA ? 'ابن حفيد (الجيل الثالث)' : 'ابنة حفيد';
-      narrativeExplanation = `«${personA.name}» هو ابن حفيد لـ «${personB.name}».`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن حفيد' : 'ابنة حفيد'} لـ «${personBDisplayName}».`;
     } else {
       relationshipTitle = `من أحفاد وذرية الجيل (${distanceA})`;
-      narrativeExplanation = `«${personA.name}» من سلالة وذرية «${personB.name}» بفارق ${distanceA} أجيال.`;
+      narrativeExplanation = `«${personADisplayName}» من سلالة وذرية «${personBDisplayName}» بفارق ${distanceA} أجيال.`;
     }
-  }
-  // Case: Siblings (Same parents)
-  else if (distanceA === 1 && distanceB === 1) {
+  } else if (distanceA === 1 && distanceB === 1) {
     relationshipType = 'sibling';
     relationshipTitle = isMaleA ? 'أخ شقيق / مباشر' : 'أخت شقيقة / مباشرة';
-    narrativeExplanation = `«${personA.name}» و«${personB.name}» إخوة مشتركان في الوالد: «${commonAncestor.name}».`;
-  }
-  // Case: A is Uncle/Aunt to B (A is brother/sister of B's ancestor)
-  else if (distanceA === 1 && distanceB > 1) {
+    narrativeExplanation = `«${personADisplayName}» و«${personBDisplayName}» إخوة مشتركان في الوالد: «${ancDisp}».`;
+  } else if (distanceA === 1 && distanceB > 1) {
     relationshipType = 'uncle_aunt';
     if (distanceB === 2) {
-      relationshipTitle = isMaleA ? 'عم مباشر (أخ والده)' : 'عمة مباشرة (أخت والده)';
+      relationshipTitle = isMaleA ? 'عم مباشر (شقيق والده)' : 'عمة مباشرة (شقيقة والده)';
       const fatherB = pathFromBToAncestor[1];
-      narrativeExplanation = `«${personA.name}» هو عم «${personB.name}» (شقيق والده ${fatherB?.name})، ويلتقيان في الجد «${commonAncestor.name}».`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'عم' : 'عمة'} «${personBDisplayName}» (${isMaleA ? 'شقيق' : 'شقيقة'} والده «${formatPersonDisplayName(fatherB, people, isPrivacyRestricted)}»)، ويلتقيان في الجد «${ancDisp}».`;
     } else if (distanceB === 3) {
-      relationshipTitle = isMaleA ? 'عم والد (العم الأكبر)' : 'عمة والد (العمة الكبرى)';
+      relationshipTitle = isMaleA ? 'عم الوالد (شقيق الجد)' : 'عمة الوالد (شقيقة الجد)';
       const grandFatherB = pathFromBToAncestor[2];
-      narrativeExplanation = `«${personA.name}» هو شقيق جد «${personB.name}» (${grandFatherB?.name})، أي عم والده، ويلتقيان في والد الجد «${commonAncestor.name}».`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'شقيق' : 'شقيقة'} جد «${personBDisplayName}» («${formatPersonDisplayName(grandFatherB, people, isPrivacyRestricted)}»)، ويلتقيان في والد الجد «${ancDisp}».`;
     } else {
-      relationshipTitle = `عم من أجداد الجيل (${distanceB - 1})`;
-      narrativeExplanation = `«${personA.name}» هو عم أحد أجداد «${personB.name}»، ويلتقيان في الجد «${commonAncestor.name}».`;
+      relationshipTitle = isMaleA ? `عم أجداد (من الجيل ${distanceB - 1})` : `عمة أجداد (من الجيل ${distanceB - 1})`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'عم' : 'عمة'} أحد أجداد «${personBDisplayName}»، ويلتقيان في الجد الجامع «${ancDisp}».`;
     }
-  }
-  // Case: B is Uncle/Aunt to A (A is nephew/niece to B)
-  else if (distanceB === 1 && distanceA > 1) {
+  } else if (distanceB === 1 && distanceA > 1) {
     relationshipType = 'nephew_niece';
     if (distanceA === 2) {
       relationshipTitle = isMaleA ? 'ابن أخ مباشر' : 'ابنة أخ مباشرة';
       const fatherA = pathFromAToAncestor[1];
-      narrativeExplanation = `«${personA.name}» هو ابن أخ لـ «${personB.name}» (والده ${fatherA?.name} هو شقيق ${personB.name})، ويلتقيان في الوالد/الجد «${commonAncestor.name}».`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن' : 'ابنة'} أخ لـ «${personBDisplayName}» (والده «${formatPersonDisplayName(fatherA, people, isPrivacyRestricted)}» هو شقيق «${personBDisplayName}»)، ويلتقيان في الجد «${ancDisp}».`;
     } else if (distanceA === 3) {
       relationshipTitle = isMaleA ? 'حفيد أخ (ابن ابن أخ)' : 'حفيدة أخ (ابنة ابن أخ)';
-      narrativeExplanation = `«${personA.name}» هو حفيد أخ لـ «${personB.name}»، حيث يفصله جيلان عن أخ ${personB.name}.`;
+      narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'حفيد' : 'حفيدة'} أخ لـ «${personBDisplayName}»، ويلتقيان في الجد «${ancDisp}».`;
     } else {
-      relationshipTitle = `من ذرية وأحفاد أخ «${personB.name}»`;
-      narrativeExplanation = `«${personA.name}» ينحدر من ذرية أخ «${personB.name}» بفارق ${distanceA} أجيال.`;
+      relationshipTitle = `من ذرية وأحفاد أخ «${personBDisplayName}»`;
+      narrativeExplanation = `«${personADisplayName}» ينحدر من ذرية أخ «${personBDisplayName}» بفارق ${distanceA} أجيال.`;
     }
-  }
-  // Case: Cousins (أبناء عمومة)
-  else {
+  } else {
     relationshipType = 'cousin';
-    // Both same distance from LCA
     if (distanceA === distanceB) {
       if (distanceA === 2) {
         relationshipTitle = isMaleA ? 'ابن عم مباشر' : 'ابنة عم مباشرة';
-        narrativeExplanation = `«${personA.name}» و«${personB.name}» أبناء عمومة مباشرون في نفس الجيل، والجد المشترك المباشر لهما هو: «${commonAncestor.name}».`;
+        narrativeExplanation = `«${personADisplayName}» و«${personBDisplayName}» أبناء عمومة مباشرون في نفس الجيل، والجد المشترك لهما هو: «${ancDisp}».`;
       } else if (distanceA === 3) {
         relationshipTitle = isMaleA ? 'ابن عم من الدرجة الثانية' : 'ابنة عم من الدرجة الثانية';
-        narrativeExplanation = `«${personA.name}» و«${personB.name}» أولاد عمومة من الدرجة الثانية (أبناء عمومة الآباء)، ويلتقيان في والد الجد المشترك: «${commonAncestor.name}».`;
+        narrativeExplanation = `«${personADisplayName}» و«${personBDisplayName}» أولاد عمومة من الدرجة الثانية، ويلتقيان في الجد المشترك: «${ancDisp}».`;
       } else if (distanceA === 4) {
         relationshipTitle = isMaleA ? 'ابن عم من الدرجة الثالثة' : 'ابنة عم من الدرجة الثالثة';
-        narrativeExplanation = `«${personA.name}» و«${personB.name}» يلتقيان في الجد الثالث المشترك: «${commonAncestor.name}».`;
+        narrativeExplanation = `«${personADisplayName}» و«${personBDisplayName}» يلتقيان في الجد الثالث المشترك: «${ancDisp}».`;
       } else {
         const degree = distanceA - 1;
         relationshipTitle = isMaleA ? `ابن عم من الدرجة (${degree})` : `ابنة عم من الدرجة (${degree})`;
-        narrativeExplanation = `«${personA.name}» و«${personB.name}» في نفس الجيل ويلتقيان في الجد المشترك: «${commonAncestor.name}» بعد ${distanceA} أجيال صعوداً.`;
+        narrativeExplanation = `«${personADisplayName}» و«${personBDisplayName}» في نفس الجيل ويلتقيان في الجد المشترك: «${ancDisp}» بعد ${distanceA} أجيال صعوداً.`;
       }
-    }
-    // A is in an older generation than B (distanceA < distanceB)
-    else if (distanceA < distanceB) {
+    } else if (distanceA < distanceB) {
       if (distanceA === 2 && distanceB === 3) {
-        relationshipTitle = isMaleA ? 'ابن عم والد (في مقام العم)' : 'ابنة عم والد';
+        relationshipTitle = isMaleA ? 'ابن عم الوالد (في مقام العم)' : 'ابنة عم الوالد (في مقام العمة)';
         const fatherB = pathFromBToAncestor[1];
-        narrativeExplanation = `«${personA.name}» هو ابن عم لوالد «${personB.name}» (${fatherB?.name})، والجد المشترك الذي يجمعهما هو: «${commonAncestor.name}».`;
+        narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن' : 'ابنة'} عم مباشر لوالد «${personBDisplayName}» («${formatPersonDisplayName(fatherB, people, isPrivacyRestricted)}»)، والجد المشترك هو: «${ancDisp}».`;
       } else if (distanceA === 2 && distanceB === 4) {
-        relationshipTitle = isMaleA ? 'ابن عم جد' : 'ابنة عم جد';
-        narrativeExplanation = `«${personA.name}» هو ابن عم لجد «${personB.name}»، ويلتقيان في الجد «${commonAncestor.name}».`;
+        relationshipTitle = isMaleA ? 'ابن عم الجد' : 'ابنة عم الجد';
+        narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن' : 'ابنة'} عم لجد «${personBDisplayName}»، ويلتقيان في الجد «${ancDisp}».`;
       } else if (distanceA === 3 && distanceB === 4) {
-        relationshipTitle = isMaleA ? 'ابن عم والد من الدرجة الثانية' : 'ابنة عم والد من الدرجة الثانية';
-        narrativeExplanation = `«${personA.name}» هو ابن عم من الدرجة الثانية لوالد «${personB.name}» بفارق جيل واحد.`;
+        relationshipTitle = isMaleA ? 'ابن عم الوالد من الدرجة الثانية' : 'ابنة عم الوالد من الدرجة الثانية';
+        narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن' : 'ابنة'} عم من الدرجة الثانية لوالد «${personBDisplayName}»، ويلتقيان في الجد «${ancDisp}».`;
       } else {
         const genGap = distanceB - distanceA;
         relationshipTitle = isMaleA
-          ? `ابن عم من جيل الأجداد (أعلى بـ ${genGap} ${genGap === 1 ? 'جيل' : 'أجيال'})`
-          : `ابنة عم من جيل الأجداد`;
-        narrativeExplanation = `«${personA.name}» يلتقي مع «${personB.name}» في الجد المشترك «${commonAncestor.name}»، والطرف الأول يسبق الطرف الثاني بـ ${genGap} أجيال.`;
+          ? `ابن عم من جيل الأجداد (أعلى بـ ${formatGenerationsCount(genGap)})`
+          : `ابنة عم من جيل الأجداد (أعلى بـ ${formatGenerationsCount(genGap)})`;
+        narrativeExplanation = `«${personADisplayName}» يلتقي مع «${personBDisplayName}» في الجد المشترك «${ancDisp}»، ويسبق «${personBDisplayName}» بـ ${formatGenerationsCount(genGap)}.`;
       }
-    }
-    // A is in a younger generation than B (distanceA > distanceB)
-    else {
+    } else {
       if (distanceA === 3 && distanceB === 2) {
-        relationshipTitle = isMaleA ? 'ابن ابن عم' : 'ابنة ابن عم';
+        relationshipTitle = isMaleA ? 'ابن ابن عم مباشر' : 'ابنة ابن عم مباشر';
         const fatherA = pathFromAToAncestor[1];
-        narrativeExplanation = `«${personA.name}» هو ابن لـ (${fatherA?.name}) الذي يعد ابن عم مباشر لـ «${personB.name}»، ويلتقيان في الجد: «${commonAncestor.name}».`;
+        narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن' : 'ابنة'} لـ («${formatPersonDisplayName(fatherA, people, isPrivacyRestricted)}») ابن عم «${personBDisplayName}»، ويلتقيان في الجد: «${ancDisp}».`;
       } else if (distanceA === 4 && distanceB === 2) {
-        relationshipTitle = isMaleA ? 'حفيد ابن عم' : 'حفيدة ابن عم';
-        narrativeExplanation = `«${personA.name}» هو حفيد لابن عم «${personB.name}»، ويلتقيان في الجد «${commonAncestor.name}».`;
+        relationshipTitle = isMaleA ? 'حفيد ابن عم مباشر' : 'حفيدة ابن عم مباشر';
+        narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'حفيد' : 'حفيدة'} لابن عم «${personBDisplayName}»، ويلتقيان في الجد «${ancDisp}».`;
       } else if (distanceA === 4 && distanceB === 3) {
         relationshipTitle = isMaleA ? 'ابن ابن عم من الدرجة الثانية' : 'ابنة ابن عم من الدرجة الثانية';
-        narrativeExplanation = `«${personA.name}» هو ابن لأحد أبناء عمومة «${personB.name}» من الدرجة الثانية.`;
+        narrativeExplanation = `«${personADisplayName}» هو ${isMaleA ? 'ابن' : 'ابنة'} لأحد أبناء عمومة «${personBDisplayName}» من الدرجة الثانية، ويلتقيان في الجد «${ancDisp}».`;
       } else {
         const genGap = distanceA - distanceB;
         relationshipTitle = isMaleA
-          ? `ابن عم من ذرية الأحفاد (أصغر بـ ${genGap} ${genGap === 1 ? 'جيل' : 'أجيال'})`
-          : `ابنة عم من ذرية الأحفاد`;
-        narrativeExplanation = `«${personA.name}» يلتقي مع «${personB.name}» في الجد المشترك «${commonAncestor.name}»، والطرف الأول يأتي بعد الطرف الثاني بـ ${genGap} أجيال في عمود النسب.`;
+          ? `ابن عم من ذرية الأحفاد (أصغر بـ ${formatGenerationsCount(genGap)})`
+          : `ابنة عم من ذرية الأحفاد (أصغر بـ ${formatGenerationsCount(genGap)})`;
+        narrativeExplanation = `«${personADisplayName}» يلتقي مع «${personBDisplayName}» في الجد المشترك «${ancDisp}»، ويأتي بعد «${personBDisplayName}» بـ ${formatGenerationsCount(genGap)}.`;
       }
     }
   }
 
+  const paternalAnalysis = buildPaternalDetailedAnalysis(
+    personA,
+    personB,
+    commonAncestor,
+    distanceA,
+    distanceB,
+    pathFromAToAncestor,
+    pathFromBToAncestor,
+    people,
+    isPrivacyRestricted
+  );
+
   return {
     personA,
     personB,
+    personADisplayName,
+    personBDisplayName,
     commonAncestor,
     relationshipTitle,
     relationshipType,
     narrativeExplanation,
+    executiveSummary: narrativeExplanation,
+    paternalAnalysis,
     distanceA,
     distanceB,
     generationDiff: genDiff,
@@ -751,6 +2075,8 @@ export function analyzeKinship(
     branchNameA: personA.branchName || 'فرع',
     branchNameB: personB.branchName || 'فرع',
     maternalKinship,
-    inLawKinship
+    crossAndGrandmothersKinship,
+    inLawKinship,
+    isPrivacyRestricted
   };
 }
