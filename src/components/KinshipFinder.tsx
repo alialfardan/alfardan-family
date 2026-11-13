@@ -64,6 +64,84 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
   const containerRefA = useRef<HTMLDivElement>(null);
   const containerRefB = useRef<HTMLDivElement>(null);
 
+  // Horizontal drag-to-scroll state for Lineage Path strips (desktop mouse + mobile touch assist)
+  const dragStateRef = useRef<{
+    isDown: boolean;
+    startX: number;
+    scrollLeft: number;
+    moved: boolean;
+    el: HTMLDivElement | null;
+  }>({
+    isDown: false,
+    startX: 0,
+    scrollLeft: 0,
+    moved: false,
+    el: null
+  });
+
+  const handleStripMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    dragStateRef.current = {
+      isDown: true,
+      startX: e.pageX - el.offsetLeft,
+      scrollLeft: el.scrollLeft,
+      moved: false,
+      el
+    };
+    el.classList.add('is-dragging');
+  };
+
+  const handleStripMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const state = dragStateRef.current;
+    if (!state.isDown || !state.el) return;
+    const x = e.pageX - state.el.offsetLeft;
+    const walk = x - state.startX;
+    if (Math.abs(walk) > 5) {
+      state.moved = true;
+      e.preventDefault();
+      state.el.scrollLeft = state.scrollLeft - walk;
+    }
+  };
+
+  const handleStripMouseUpOrLeave = () => {
+    const state = dragStateRef.current;
+    if (state.el) {
+      state.el.classList.remove('is-dragging');
+    }
+    state.isDown = false;
+    setTimeout(() => {
+      dragStateRef.current.moved = false;
+    }, 50);
+  };
+
+  const handleStripTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length !== 1) return;
+    const el = e.currentTarget;
+    dragStateRef.current = {
+      isDown: true,
+      startX: e.touches[0].clientX,
+      scrollLeft: el.scrollLeft,
+      moved: false,
+      el
+    };
+  };
+
+  const handleStripTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    const state = dragStateRef.current;
+    if (!state.isDown || e.touches.length !== 1) return;
+    const deltaX = e.touches[0].clientX - state.startX;
+    if (Math.abs(deltaX) > 8) {
+      state.moved = true;
+    }
+  };
+
+  const handleStripTouchEnd = () => {
+    dragStateRef.current.isDown = false;
+    setTimeout(() => {
+      dragStateRef.current.moved = false;
+    }, 60);
+  };
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (containerRefA.current && !containerRefA.current.contains(event.target as Node)) {
@@ -124,7 +202,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
   };
 
   const handleNavigate = (key?: string) => {
-    if (!key) return;
+    if (!key || dragStateRef.current.moved) return;
     if (onSelectPerson) {
       onSelectPerson(key, { reveal: true, center: true });
     }
@@ -734,32 +812,53 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <span className="text-xs text-slate-500">اضغط على أي اسم للانتقال إليه</span>
                   </div>
 
-                  <div className="p-4 bg-white/95 border border-emerald-200 rounded-2xl overflow-x-auto touch-pan-y overscroll-x-contain shadow-2xs">
+                  <div
+                    onMouseDown={handleStripMouseDown}
+                    onMouseMove={handleStripMouseMove}
+                    onMouseUp={handleStripMouseUpOrLeave}
+                    onMouseLeave={handleStripMouseUpOrLeave}
+                    onTouchStart={handleStripTouchStart}
+                    onTouchMove={handleStripTouchMove}
+                    onTouchEnd={handleStripTouchEnd}
+                    style={{
+                      overflowX: 'auto',
+                      WebkitOverflowScrolling: 'touch',
+                      touchAction: 'pan-x pan-y',
+                      scrollBehavior: 'smooth',
+                      cursor: 'grab',
+                      scrollbarWidth: 'none'
+                    }}
+                    className="lineage-path-scroll p-4 bg-white/95 border border-emerald-200 rounded-2xl shadow-2xs select-none"
+                  >
                     <div className="flex items-center gap-2 min-w-max py-1 px-1">
                       {/* Node A */}
                       <button
+                        type="button"
                         onClick={() => handleNavigate(personA.key)}
-                        className="p-3.5 bg-emerald-800 text-white rounded-2xl text-right shadow-sm hover:bg-emerald-900 transition-all cursor-pointer"
+                        draggable={false}
+                        className="p-3.5 bg-emerald-800 text-white rounded-2xl text-right shadow-sm hover:bg-emerald-900 transition-all cursor-pointer select-none"
                       >
-                        <span className="text-[11px] block text-emerald-200 font-bold">🟢 {kinshipResult.personADisplayName}</span>
-                        <span className="font-naskh text-base sm:text-lg font-bold block">
+                        <span className="text-[11px] block text-emerald-200 font-bold pointer-events-none">🟢 {kinshipResult.personADisplayName}</span>
+                        <span className="font-naskh text-base sm:text-lg font-bold block pointer-events-none">
                           {kinshipResult.personADisplayName}
                         </span>
-                        <span className="text-[11px] block text-emerald-300">الجيل {personA.generation}</span>
+                        <span className="text-[11px] block text-emerald-300 pointer-events-none">الجيل {personA.generation}</span>
                       </button>
 
                       {/* Upward chain to LCA */}
                       {kinshipResult.pathFromAToAncestor.slice(1, -1).map((ancestor, i) => (
                         <React.Fragment key={`main-pathA-${ancestor.key}-${i}`}>
-                          <span className="text-emerald-700 font-bold text-base px-0.5">⟵</span>
+                          <span className="text-emerald-700 font-bold text-base px-0.5 select-none pointer-events-none">⟵</span>
                           <button
+                            type="button"
                             onClick={() => handleNavigate(ancestor.key)}
-                            className="p-3 bg-emerald-50/60 border border-emerald-300 hover:border-emerald-600 text-slate-900 rounded-xl text-right shadow-2xs transition-all cursor-pointer"
+                            draggable={false}
+                            className="p-3 bg-emerald-50/60 border border-emerald-300 hover:border-emerald-600 text-slate-900 rounded-xl text-right shadow-2xs transition-all cursor-pointer select-none"
                           >
-                            <span className="text-[11px] block text-emerald-800 font-semibold">
+                            <span className="text-[11px] block text-emerald-800 font-semibold pointer-events-none">
                               {i === 0 ? `والد ${kinshipResult.personADisplayName}` : `جد ${kinshipResult.personADisplayName}`}
                             </span>
-                            <span className="font-naskh text-base sm:text-lg font-bold block">
+                            <span className="font-naskh text-base sm:text-lg font-bold block pointer-events-none">
                               {formatPersonDisplayName(ancestor, registry.people, isPrivacyRestricted)}
                             </span>
                           </button>
@@ -771,20 +870,22 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                         kinshipResult.personA.key !== kinshipResult.commonAncestor.key &&
                         kinshipResult.personB.key !== kinshipResult.commonAncestor.key && (
                           <>
-                            <span className="text-amber-600 font-bold text-lg px-0.5">⟵</span>
+                            <span className="text-amber-600 font-bold text-lg px-0.5 select-none pointer-events-none">⟵</span>
                             <button
+                              type="button"
                               onClick={() => handleNavigate(kinshipResult.commonAncestor!.key)}
-                              className="p-3.5 bg-amber-500 text-slate-950 font-bold rounded-2xl text-right shadow-md hover:bg-amber-400 transition-all cursor-pointer border-2 border-amber-600"
+                              draggable={false}
+                              className="p-3.5 bg-amber-500 text-slate-950 font-bold rounded-2xl text-right shadow-md hover:bg-amber-400 transition-all cursor-pointer border-2 border-amber-600 select-none"
                             >
-                              <span className="text-[11px] block text-amber-950/90 font-bold">⭐ الجد المشترك</span>
-                              <span className="font-naskh text-base sm:text-xl font-extrabold block">
+                              <span className="text-[11px] block text-amber-950/90 font-bold pointer-events-none">⭐ الجد المشترك</span>
+                              <span className="font-naskh text-base sm:text-xl font-extrabold block pointer-events-none">
                                 {formatPersonDisplayName(kinshipResult.commonAncestor, registry.people, isPrivacyRestricted)}
                               </span>
-                              <span className="text-[11px] block text-amber-950/80">
+                              <span className="text-[11px] block text-amber-950/80 pointer-events-none">
                                 الجيل {kinshipResult.commonAncestor.generation}
                               </span>
                             </button>
-                            <span className="text-amber-600 font-bold text-lg px-0.5">⟶</span>
+                            <span className="text-amber-600 font-bold text-lg px-0.5 select-none pointer-events-none">⟶</span>
                           </>
                         )}
 
@@ -795,30 +896,34 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                         .map((ancestor, i, arr) => (
                           <React.Fragment key={`main-pathB-${ancestor.key}-${i}`}>
                             <button
+                              type="button"
                               onClick={() => handleNavigate(ancestor.key)}
-                              className="p-3 bg-amber-50/60 border border-amber-300 hover:border-amber-600 text-slate-900 rounded-xl text-right shadow-2xs transition-all cursor-pointer"
+                              draggable={false}
+                              className="p-3 bg-amber-50/60 border border-amber-300 hover:border-amber-600 text-slate-900 rounded-xl text-right shadow-2xs transition-all cursor-pointer select-none"
                             >
-                              <span className="text-[11px] block text-amber-900 font-semibold">
+                              <span className="text-[11px] block text-amber-900 font-semibold pointer-events-none">
                                 {i === arr.length - 1 ? `والد ${kinshipResult.personBDisplayName}` : `جد ${kinshipResult.personBDisplayName}`}
                               </span>
-                              <span className="font-naskh text-base sm:text-lg font-bold block">
+                              <span className="font-naskh text-base sm:text-lg font-bold block pointer-events-none">
                                 {formatPersonDisplayName(ancestor, registry.people, isPrivacyRestricted)}
                               </span>
                             </button>
-                            <span className="text-amber-700 font-bold text-base px-0.5">⟶</span>
+                            <span className="text-amber-700 font-bold text-base px-0.5 select-none pointer-events-none">⟶</span>
                           </React.Fragment>
                         ))}
 
                       {/* Node B */}
                       <button
+                        type="button"
                         onClick={() => handleNavigate(personB.key)}
-                        className="p-3.5 bg-amber-700 text-white rounded-2xl text-right shadow-sm hover:bg-amber-800 transition-all cursor-pointer"
+                        draggable={false}
+                        className="p-3.5 bg-amber-700 text-white rounded-2xl text-right shadow-sm hover:bg-amber-800 transition-all cursor-pointer select-none"
                       >
-                        <span className="text-[11px] block text-amber-200 font-bold">🟠 {kinshipResult.personBDisplayName}</span>
-                        <span className="font-naskh text-base sm:text-lg font-bold block">
+                        <span className="text-[11px] block text-amber-200 font-bold pointer-events-none">🟠 {kinshipResult.personBDisplayName}</span>
+                        <span className="font-naskh text-base sm:text-lg font-bold block pointer-events-none">
                           {kinshipResult.personBDisplayName}
                         </span>
-                        <span className="text-[11px] block text-amber-300">الجيل {personB.generation}</span>
+                        <span className="text-[11px] block text-amber-300 pointer-events-none">الجيل {personB.generation}</span>
                       </button>
                     </div>
                   </div>
@@ -1141,36 +1246,56 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                         <span className="font-naskh text-base sm:text-lg font-bold text-emerald-900 block">
                           • سلسلة النسب الأبوي بين «{kinshipResult.personADisplayName}» و«{kinshipResult.personBDisplayName}» حتى الجد المشترك:
                         </span>
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {kinshipResult.paternalAnalysis.visualPath.nodes.map((node, idx) => {
-                            const highlightIdx = kinshipResult.paternalAnalysis.visualPath.nodes.findIndex(n => n.isHighlight);
-                            const arrow = highlightIdx === -1 || idx <= highlightIdx ? '⟵' : '⟶';
-                            return (
-                              <React.Fragment key={`pat-bullet-node-${idx}`}>
-                                {idx > 0 && (
-                                  <span className="text-emerald-700 font-black text-lg px-0.5">{arrow}</span>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => node.key && handleNavigate(node.key)}
-                                  className={`px-3.5 py-2.5 rounded-xl text-right border transition-all cursor-pointer ${
-                                    node.isHighlight
-                                      ? 'bg-amber-500 text-slate-950 border-amber-600 font-extrabold shadow-xs'
-                                      : node.isEndpointA
-                                      ? 'bg-emerald-800 text-white border-emerald-900 font-bold'
-                                      : node.isEndpointB
-                                      ? 'bg-amber-700 text-white border-amber-800 font-bold'
-                                      : 'bg-slate-50 hover:bg-emerald-50 text-slate-900 border-slate-200 font-semibold'
-                                  }`}
-                                >
-                                  <span className="text-[11px] block opacity-85">{node.roleLabel}</span>
-                                  <span className="font-naskh text-base sm:text-lg font-bold block">
-                                    {node.displayName}
-                                  </span>
-                                </button>
-                              </React.Fragment>
-                            );
-                          })}
+                        <div
+                          onMouseDown={handleStripMouseDown}
+                          onMouseMove={handleStripMouseMove}
+                          onMouseUp={handleStripMouseUpOrLeave}
+                          onMouseLeave={handleStripMouseUpOrLeave}
+                          onTouchStart={handleStripTouchStart}
+                          onTouchMove={handleStripTouchMove}
+                          onTouchEnd={handleStripTouchEnd}
+                          style={{
+                            overflowX: 'auto',
+                            WebkitOverflowScrolling: 'touch',
+                            touchAction: 'pan-x pan-y',
+                            scrollBehavior: 'smooth',
+                            cursor: 'grab',
+                            scrollbarWidth: 'none'
+                          }}
+                          className="lineage-path-scroll pt-1 pb-1 select-none"
+                        >
+                          <div className="flex items-center gap-2 min-w-max">
+                            {kinshipResult.paternalAnalysis.visualPath.nodes.map((node, idx) => {
+                              const highlightIdx = kinshipResult.paternalAnalysis.visualPath.nodes.findIndex(n => n.isHighlight);
+                              const arrow = highlightIdx === -1 || idx <= highlightIdx ? '⟵' : '⟶';
+                              return (
+                                <React.Fragment key={`pat-bullet-node-${idx}`}>
+                                  {idx > 0 && (
+                                    <span className="text-emerald-700 font-black text-lg px-0.5 select-none pointer-events-none">{arrow}</span>
+                                  )}
+                                  <button
+                                    type="button"
+                                    draggable={false}
+                                    onClick={() => node.key && handleNavigate(node.key)}
+                                    className={`px-3.5 py-2.5 rounded-xl text-right border transition-all cursor-pointer select-none ${
+                                      node.isHighlight
+                                        ? 'bg-amber-500 text-slate-950 border-amber-600 font-extrabold shadow-xs'
+                                        : node.isEndpointA
+                                        ? 'bg-emerald-800 text-white border-emerald-900 font-bold'
+                                        : node.isEndpointB
+                                        ? 'bg-amber-700 text-white border-amber-800 font-bold'
+                                        : 'bg-slate-50 hover:bg-emerald-50 text-slate-900 border-slate-200 font-semibold'
+                                    }`}
+                                  >
+                                    <span className="text-[11px] block opacity-85 pointer-events-none">{node.roleLabel}</span>
+                                    <span className="font-naskh text-base sm:text-lg font-bold block pointer-events-none">
+                                      {node.displayName}
+                                    </span>
+                                  </button>
+                                </React.Fragment>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}

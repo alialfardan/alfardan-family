@@ -54,6 +54,36 @@
   touch-action: pan-y;
 }
 
+/* Ultra-smooth horizontal touch & mouse drag scrolling for Lineage Path Bar */
+.lineage-path-scroll {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-x pan-y !important;
+  overscroll-behavior-x: contain !important;
+  scroll-behavior: smooth;
+  cursor: grab;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lineage-path-scroll:active,
+.lineage-path-scroll.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto !important;
+}
+
+.lineage-path-scroll::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+.lineage-path-scroll * {
+  touch-action: pan-x pan-y !important;
+}
+
 /* Custom discreet scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

@@ -1,10 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { ArchivalPhoto, FamilyTreeProcessed } from '../types/family';
 import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
-  Download,
   ShieldCheck,
   Sparkles,
   BookOpen,
@@ -13,7 +12,6 @@ import {
   Award,
   Maximize2,
   FileText,
-  Upload,
   Plus,
   Edit2,
   Trash2,
@@ -27,7 +25,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { normalizeArabic } from '../data/treeManager';
-import { downloadImageSmoothly, getFallbackImageUrl } from '../utils/imageDownload';
+import { getFallbackImageUrl } from '../utils/imageDownload';
 import { getDefaultAvatarDataUri } from './MemberAvatar';
 
 interface DocumentArchiveViewProps {
@@ -85,6 +83,8 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
   isPrivacyRestricted = false
 }) => {
   const [docZoom, setDocZoom] = useState(1);
+  const [docPan, setDocPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDocDragging, setIsDocDragging] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Gallery Filter & Search State
@@ -92,6 +92,368 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
   const [lightboxZoom, setLightboxZoom] = useState<number>(1);
+  const [lightboxPan, setLightboxPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isLightboxDragging, setIsLightboxDragging] = useState(false);
+
+  // Touch & Mouse Gesture Refs for Lightbox Viewer (1x to 5x Pinch-to-Zoom, Pan, Double-Tap)
+  const lbTouchRef = useRef<{
+    mode: 'none' | 'pan' | 'pinch';
+    startDist: number;
+    startZoom: number;
+    startX: number;
+    startY: number;
+    startPanX: number;
+    startPanY: number;
+    lastTapTime: number;
+    lastTapX: number;
+    lastTapY: number;
+  }>({
+    mode: 'none',
+    startDist: 0,
+    startZoom: 1,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0
+  });
+
+  // Touch & Mouse Gesture Refs for Main Original Document Viewer (1x to 5x Pinch-to-Zoom, Pan, Double-Tap)
+  const docTouchRef = useRef<{
+    mode: 'none' | 'pan' | 'pinch';
+    startDist: number;
+    startZoom: number;
+    startX: number;
+    startY: number;
+    startPanX: number;
+    startPanY: number;
+    lastTapTime: number;
+    lastTapX: number;
+    lastTapY: number;
+  }>({
+    mode: 'none',
+    startDist: 0,
+    startZoom: 1,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0
+  });
+
+  const resetLightboxTransform = () => {
+    setLightboxZoom(1);
+    setLightboxPan({ x: 0, y: 0 });
+    setIsLightboxDragging(false);
+  };
+
+  const resetDocTransform = () => {
+    setDocZoom(1);
+    setDocPan({ x: 0, y: 0 });
+    setIsDocDragging(false);
+  };
+
+  // Helper to get distance between 2 touch points
+  const getTouchDistance = (t1: React.Touch, t2: React.Touch) => {
+    return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+  };
+
+  // --- Lightbox Touch & Mouse Handlers ---
+  const handleLbTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDistance(e.touches[0], e.touches[1]);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      lbTouchRef.current.mode = 'pinch';
+      lbTouchRef.current.startDist = Math.max(dist, 10);
+      lbTouchRef.current.startZoom = lightboxZoom;
+      lbTouchRef.current.startX = midX;
+      lbTouchRef.current.startY = midY;
+      lbTouchRef.current.startPanX = lightboxPan.x;
+      lbTouchRef.current.startPanY = lightboxPan.y;
+      setIsLightboxDragging(true);
+    } else if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const now = Date.now();
+      const dt = now - lbTouchRef.current.lastTapTime;
+      const dx = Math.abs(touch.clientX - lbTouchRef.current.lastTapX);
+      const dy = Math.abs(touch.clientY - lbTouchRef.current.lastTapY);
+
+      if (dt > 0 && dt < 300 && dx < 30 && dy < 30) {
+        // Double-Tap to toggle zoom (1x <-> 2.5x)
+        e.preventDefault();
+        if (lightboxZoom > 1.05) {
+          resetLightboxTransform();
+        } else {
+          setLightboxZoom(2.5);
+          setLightboxPan({ x: 0, y: 0 });
+        }
+        lbTouchRef.current.lastTapTime = 0;
+        lbTouchRef.current.mode = 'none';
+        return;
+      }
+
+      lbTouchRef.current.lastTapTime = now;
+      lbTouchRef.current.lastTapX = touch.clientX;
+      lbTouchRef.current.lastTapY = touch.clientY;
+
+      if (lightboxZoom > 1) {
+        lbTouchRef.current.mode = 'pan';
+        lbTouchRef.current.startX = touch.clientX;
+        lbTouchRef.current.startY = touch.clientY;
+        lbTouchRef.current.startPanX = lightboxPan.x;
+        lbTouchRef.current.startPanY = lightboxPan.y;
+        setIsLightboxDragging(true);
+      } else {
+        lbTouchRef.current.mode = 'none';
+      }
+    }
+  };
+
+  const handleLbTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && lbTouchRef.current.mode === 'pinch') {
+      e.preventDefault();
+      const dist = getTouchDistance(e.touches[0], e.touches[1]);
+      const scaleRatio = dist / lbTouchRef.current.startDist;
+      const nextZoom = Math.min(Math.max(lbTouchRef.current.startZoom * scaleRatio, 1), 5);
+      setLightboxZoom(nextZoom);
+
+      if (nextZoom <= 1.02) {
+        setLightboxPan({ x: 0, y: 0 });
+      } else {
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        setLightboxPan({
+          x: lbTouchRef.current.startPanX + (midX - lbTouchRef.current.startX),
+          y: lbTouchRef.current.startPanY + (midY - lbTouchRef.current.startY)
+        });
+      }
+    } else if (e.touches.length === 1 && lbTouchRef.current.mode === 'pan' && lightboxZoom > 1) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      setLightboxPan({
+        x: lbTouchRef.current.startPanX + (touch.clientX - lbTouchRef.current.startX),
+        y: lbTouchRef.current.startPanY + (touch.clientY - lbTouchRef.current.startY)
+      });
+    }
+  };
+
+  const handleLbTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1 && lightboxZoom > 1) {
+      // Transition smoothly from 2-finger pinch to 1-finger pan
+      const touch = e.touches[0];
+      lbTouchRef.current.mode = 'pan';
+      lbTouchRef.current.startX = touch.clientX;
+      lbTouchRef.current.startY = touch.clientY;
+      lbTouchRef.current.startPanX = lightboxPan.x;
+      lbTouchRef.current.startPanY = lightboxPan.y;
+    } else if (e.touches.length === 0) {
+      lbTouchRef.current.mode = 'none';
+      setIsLightboxDragging(false);
+      if (lightboxZoom <= 1.02) {
+        setLightboxZoom(1);
+        setLightboxPan({ x: 0, y: 0 });
+      }
+    }
+  };
+
+  const handleLbMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (lightboxZoom <= 1) return;
+    e.preventDefault();
+    lbTouchRef.current.mode = 'pan';
+    lbTouchRef.current.startX = e.clientX;
+    lbTouchRef.current.startY = e.clientY;
+    lbTouchRef.current.startPanX = lightboxPan.x;
+    lbTouchRef.current.startPanY = lightboxPan.y;
+    setIsLightboxDragging(true);
+  };
+
+  const handleLbMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isLightboxDragging || lbTouchRef.current.mode !== 'pan' || lightboxZoom <= 1) return;
+    e.preventDefault();
+    setLightboxPan({
+      x: lbTouchRef.current.startPanX + (e.clientX - lbTouchRef.current.startX),
+      y: lbTouchRef.current.startPanY + (e.clientY - lbTouchRef.current.startY)
+    });
+  };
+
+  const handleLbMouseUp = () => {
+    if (isLightboxDragging) {
+      lbTouchRef.current.mode = 'none';
+      setIsLightboxDragging(false);
+    }
+  };
+
+  const handleLbWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.35 : -0.35;
+    setLightboxZoom(prev => {
+      const next = Math.min(Math.max(+(prev + delta).toFixed(2), 1), 5);
+      if (next <= 1) setLightboxPan({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  const handleLbDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (lightboxZoom > 1.05) {
+      resetLightboxTransform();
+    } else {
+      setLightboxZoom(2.5);
+      setLightboxPan({ x: 0, y: 0 });
+    }
+  };
+
+  // --- Original Document Showcase Touch & Mouse Handlers ---
+  const handleDocTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDistance(e.touches[0], e.touches[1]);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      docTouchRef.current.mode = 'pinch';
+      docTouchRef.current.startDist = Math.max(dist, 10);
+      docTouchRef.current.startZoom = docZoom;
+      docTouchRef.current.startX = midX;
+      docTouchRef.current.startY = midY;
+      docTouchRef.current.startPanX = docPan.x;
+      docTouchRef.current.startPanY = docPan.y;
+      setIsDocDragging(true);
+    } else if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const now = Date.now();
+      const dt = now - docTouchRef.current.lastTapTime;
+      const dx = Math.abs(touch.clientX - docTouchRef.current.lastTapX);
+      const dy = Math.abs(touch.clientY - docTouchRef.current.lastTapY);
+
+      if (dt > 0 && dt < 300 && dx < 30 && dy < 30) {
+        e.preventDefault();
+        if (docZoom > 1.05) {
+          resetDocTransform();
+        } else {
+          setDocZoom(2.5);
+          setDocPan({ x: 0, y: 0 });
+        }
+        docTouchRef.current.lastTapTime = 0;
+        docTouchRef.current.mode = 'none';
+        return;
+      }
+
+      docTouchRef.current.lastTapTime = now;
+      docTouchRef.current.lastTapX = touch.clientX;
+      docTouchRef.current.lastTapY = touch.clientY;
+
+      if (docZoom > 1) {
+        docTouchRef.current.mode = 'pan';
+        docTouchRef.current.startX = touch.clientX;
+        docTouchRef.current.startY = touch.clientY;
+        docTouchRef.current.startPanX = docPan.x;
+        docTouchRef.current.startPanY = docPan.y;
+        setIsDocDragging(true);
+      } else {
+        docTouchRef.current.mode = 'none';
+      }
+    }
+  };
+
+  const handleDocTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && docTouchRef.current.mode === 'pinch') {
+      e.preventDefault();
+      const dist = getTouchDistance(e.touches[0], e.touches[1]);
+      const scaleRatio = dist / docTouchRef.current.startDist;
+      const nextZoom = Math.min(Math.max(docTouchRef.current.startZoom * scaleRatio, 1), 5);
+      setDocZoom(nextZoom);
+
+      if (nextZoom <= 1.02) {
+        setDocPan({ x: 0, y: 0 });
+      } else {
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        setDocPan({
+          x: docTouchRef.current.startPanX + (midX - docTouchRef.current.startX),
+          y: docTouchRef.current.startPanY + (midY - docTouchRef.current.startY)
+        });
+      }
+    } else if (e.touches.length === 1 && docTouchRef.current.mode === 'pan' && docZoom > 1) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      setDocPan({
+        x: docTouchRef.current.startPanX + (touch.clientX - docTouchRef.current.startX),
+        y: docTouchRef.current.startPanY + (touch.clientY - docTouchRef.current.startY)
+      });
+    }
+  };
+
+  const handleDocTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1 && docZoom > 1) {
+      const touch = e.touches[0];
+      docTouchRef.current.mode = 'pan';
+      docTouchRef.current.startX = touch.clientX;
+      docTouchRef.current.startY = touch.clientY;
+      docTouchRef.current.startPanX = docPan.x;
+      docTouchRef.current.startPanY = docPan.y;
+    } else if (e.touches.length === 0) {
+      docTouchRef.current.mode = 'none';
+      setIsDocDragging(false);
+      if (docZoom <= 1.02) {
+        setDocZoom(1);
+        setDocPan({ x: 0, y: 0 });
+      }
+    }
+  };
+
+  const handleDocMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (docZoom <= 1) return;
+    e.preventDefault();
+    docTouchRef.current.mode = 'pan';
+    docTouchRef.current.startX = e.clientX;
+    docTouchRef.current.startY = e.clientY;
+    docTouchRef.current.startPanX = docPan.x;
+    docTouchRef.current.startPanY = docPan.y;
+    setIsDocDragging(true);
+  };
+
+  const handleDocMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDocDragging || docTouchRef.current.mode !== 'pan' || docZoom <= 1) return;
+    e.preventDefault();
+    setDocPan({
+      x: docTouchRef.current.startPanX + (e.clientX - docTouchRef.current.startX),
+      y: docTouchRef.current.startPanY + (e.clientY - docTouchRef.current.startY)
+    });
+  };
+
+  const handleDocMouseUp = () => {
+    if (isDocDragging) {
+      docTouchRef.current.mode = 'none';
+      setIsDocDragging(false);
+    }
+  };
+
+  const handleDocWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!isFullscreen && docZoom <= 1) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.35 : -0.35;
+    setDocZoom(prev => {
+      const next = Math.min(Math.max(+(prev + delta).toFixed(2), 1), 5);
+      if (next <= 1) setDocPan({ x: 0, y: 0 });
+      return next;
+    });
+  };
+
+  const handleDocDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (docZoom > 1.05) {
+      resetDocTransform();
+    } else {
+      setDocZoom(2.5);
+      setDocPan({ x: 0, y: 0 });
+    }
+  };
 
   // Extract the main document record (if customized) for the unified top showcase
   const mainDocPhoto = useMemo(() => {
@@ -185,13 +547,13 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
 
   const handlePrevPhoto = () => {
     if (selectedPhotoIndex === null || filteredPhotos.length === 0) return;
-    setLightboxZoom(1);
+    resetLightboxTransform();
     setSelectedPhotoIndex(prev => (prev! > 0 ? prev! - 1 : filteredPhotos.length - 1));
   };
 
   const handleNextPhoto = () => {
     if (selectedPhotoIndex === null || filteredPhotos.length === 0) return;
-    setLightboxZoom(1);
+    resetLightboxTransform();
     setSelectedPhotoIndex(prev => (prev! < filteredPhotos.length - 1 ? prev! + 1 : 0));
   };
 
@@ -293,7 +655,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                     <span>إدارة ورفع الوثائق والصور</span>
                   </div>
                   <p className="text-[11px] text-slate-200 leading-relaxed">
-                    يمكن لجميع الزوار استعراض وتكبير وتحميل كافة الوثائق والصور. الإضافة والتعديل مخصصان للمشرف الموثق.
+                    يمكن لجميع الزوار استعراض وتكبير كافة الوثائق والصور التاريخية بجودة عالية. الإضافة والتعديل مخصصان للمشرف الموثق.
                   </p>
                 </div>
               )
@@ -326,18 +688,6 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-start lg:self-center">
-            <button
-              type="button"
-              onClick={() =>
-                downloadImageSmoothly(primaryDocUrl, 'Wathikat-Al-Fardan-Original.jpg', onShowToast)
-              }
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer"
-              title="تحميل صورة الوثيقة الأصلية بالحجم الكامل"
-            >
-              <Download className="w-4 h-4 text-amber-300" />
-              <span>تحميل الوثيقة الأصلية</span>
-            </button>
-
             {isAuthorized && mainDocPhoto && onOpenEditDocumentModal && (
               <button
                 type="button"
@@ -351,74 +701,173 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
             )}
 
             <button
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              type="button"
+              onClick={() => {
+                setIsFullscreen(!isFullscreen);
+                resetDocTransform();
+              }}
+              className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-colors shadow-sm cursor-pointer"
             >
-              <Maximize2 className="w-4 h-4" />
-              <span>{isFullscreen ? 'تصغير العرض' : 'ملء الشاشة'}</span>
+              <Maximize2 className="w-4 h-4 text-amber-300" />
+              <span>{isFullscreen ? 'تصغير العرض' : 'استعراض بملء الشاشة'}</span>
             </button>
           </div>
         </div>
 
-        {/* Interactive Zoomable Document Area */}
-        <div
-          className={`relative overflow-auto rounded-2xl bg-[#e5e7eb] border border-slate-300 p-2 sm:p-4 flex items-center justify-center transition-all ${
-            isFullscreen ? 'fixed inset-4 z-50 bg-slate-900/95 p-6' : 'min-h-[420px] max-h-[680px]'
-          }`}
-        >
+        {/* Interactive Zoomable Document Area (Supports 2-Finger Pinch-to-Zoom 1x-5x, 1-Finger Pan, Double-Tap) */}
+        <div className="space-y-3">
           <div
+            onTouchStart={handleDocTouchStart}
+            onTouchMove={handleDocTouchMove}
+            onTouchEnd={handleDocTouchEnd}
+            onTouchCancel={handleDocTouchEnd}
+            onMouseDown={handleDocMouseDown}
+            onMouseMove={handleDocMouseMove}
+            onMouseUp={handleDocMouseUp}
+            onMouseLeave={handleDocMouseUp}
+            onWheel={handleDocWheel}
+            onDoubleClick={handleDocDoubleClick}
+            onContextMenu={e => e.preventDefault()}
             style={{
-              transform: `scale(${docZoom})`,
-              transformOrigin: 'center center',
-              transition: 'transform 0.2s ease-out'
+              touchAction: docZoom > 1 || isFullscreen ? 'none' : 'pan-y'
             }}
-            className="max-w-full inline-block"
+            className={`relative overflow-hidden rounded-2xl bg-[#e5e7eb] border border-slate-300 p-2 sm:p-4 flex items-center justify-center select-none ${
+              isFullscreen
+                ? 'fixed inset-2 sm:inset-4 z-50 bg-slate-950/95 p-4 sm:p-6 pb-20'
+                : 'min-h-[380px] sm:min-h-[480px] max-h-[680px]'
+            } ${docZoom > 1 ? (isDocDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in'}`}
           >
-            <img
-              src={primaryDocUrl}
-              alt="مخطوطة ووثيقة شجرة نسب عائلة الفردان الأصلية"
-              loading="lazy"
-              decoding="async"
-              onError={e => handleImageError(e, primaryDocUrl)}
-              className="w-full h-auto max-h-[82vh] object-contain rounded-lg shadow-2xl bg-white select-none pointer-events-auto"
-            />
+            <div
+              style={{
+                transform: `translate3d(${docPan.x}px, ${docPan.y}px, 0) scale(${docZoom})`,
+                transformOrigin: 'center center',
+                transition: isDocDragging ? 'none' : 'transform 0.18s ease-out'
+              }}
+              className="max-w-full inline-block select-none pointer-events-none"
+            >
+              <img
+                src={primaryDocUrl}
+                alt="مخطوطة ووثيقة شجرة نسب عائلة الفردان الأصلية"
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                onContextMenu={e => e.preventDefault()}
+                onError={e => handleImageError(e, primaryDocUrl)}
+                className="w-full h-auto max-h-[78vh] object-contain rounded-lg shadow-2xl bg-white select-none pointer-events-none"
+              />
+            </div>
+
+            {isFullscreen && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsFullscreen(false);
+                    resetDocTransform();
+                  }}
+                  className="absolute top-4 left-4 z-30 px-4 py-2 bg-white text-slate-900 rounded-xl text-xs font-bold shadow-lg cursor-pointer"
+                >
+                  إغلاق ملء الشاشة ✕
+                </button>
+
+                {/* Bottom Zoom Control Bar in Fullscreen */}
+                <div
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-2xl border border-white/20 text-white"
+                  onClick={e => e.stopPropagation()}
+                  onTouchStart={e => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setDocZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
+                    title="تكبير (+)"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                    <span>+ تكبير</span>
+                  </button>
+
+                  <span className="text-xs font-bold px-2 tabular-nums text-amber-300">
+                    {Math.round(docZoom * 100)}%
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDocZoom(prev => {
+                        const next = Math.max(+(prev - 0.5).toFixed(2), 1);
+                        if (next <= 1) setDocPan({ x: 0, y: 0 });
+                        return next;
+                      })
+                    }
+                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
+                    title="تصغير (-)"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                    <span>- تصغير</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={resetDocTransform}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
+                    title="إعادة ضبط الحجم"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>إعادة ضبط</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* Floating Zoom Bar */}
-          <div className="absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg border border-slate-300 text-slate-800">
-            <button
-              onClick={() => setDocZoom(prev => Math.min(prev + 0.25, 2.8))}
-              className="p-1.5 hover:bg-slate-100 rounded-xl cursor-pointer"
-              title="تكبير"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <span className="text-[11px] font-bold px-1 tabular-nums">{Math.round(docZoom * 100)}%</span>
-            <button
-              onClick={() => setDocZoom(prev => Math.max(prev - 0.25, 0.5))}
-              className="p-1.5 hover:bg-slate-100 rounded-xl cursor-pointer"
-              title="تصغير"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-            <button
-              onClick={() => setDocZoom(1)}
-              className="p-1.5 hover:bg-slate-100 rounded-xl cursor-pointer"
-              title="إعادة ضبط الحجم"
-            >
-              <RotateCcw className="w-4 h-4" />
-            </button>
-          </div>
+          {/* Dedicated Bottom Control Bar Below Main Document Viewer (+ تكبير / - تصغير / إعادة ضبط) */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200/90 rounded-2xl px-4 py-2.5">
+            <span className="text-xs text-slate-600 font-semibold">
+              💡 يمكنك تكبير الوثيقة بإصبعين (Pinch-to-Zoom) أو النقر المزدوج وتحريكها في جميع الاتجاهات
+            </span>
 
-          {isFullscreen && (
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="absolute top-4 left-4 z-20 px-4 py-2 bg-white text-slate-900 rounded-xl text-xs font-bold shadow-lg cursor-pointer"
-            >
-              إغلاق ملء الشاشة
-            </button>
-          )}
+            <div className="flex items-center gap-2 mx-auto sm:mx-0">
+              <button
+                type="button"
+                onClick={() => setDocZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
+                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-2xs cursor-pointer active:scale-95 transition-all"
+                title="تكبير (+)"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+                <span>+ تكبير</span>
+              </button>
+
+              <span className="text-xs font-bold px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 tabular-nums">
+                {Math.round(docZoom * 100)}%
+              </span>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setDocZoom(prev => {
+                    const next = Math.max(+(prev - 0.5).toFixed(2), 1);
+                    if (next <= 1) setDocPan({ x: 0, y: 0 });
+                    return next;
+                  })
+                }
+                className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs cursor-pointer active:scale-95 transition-all"
+                title="تصغير (-)"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
+                <span>- تصغير</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={resetDocTransform}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-xl text-xs font-bold shadow-2xs cursor-pointer active:scale-95 transition-all"
+                title="إعادة ضبط"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>إعادة ضبط</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Merged Comprehensive Documentary Notes & Transcribed Chronicle (Combines all notes from the 2 former duplicate cards + original text) */}
@@ -630,10 +1079,11 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                 >
                   {/* Thumbnail Container */}
                   <div
-                    className="relative aspect-[4/3] bg-slate-100 overflow-hidden cursor-pointer flex items-center justify-center"
+                    className="relative aspect-[4/3] bg-slate-100 overflow-hidden cursor-pointer flex items-center justify-center select-none"
+                    onContextMenu={e => e.preventDefault()}
                     onClick={() => {
                       setSelectedPhotoIndex(index);
-                      setLightboxZoom(1);
+                      resetLightboxTransform();
                     }}
                   >
                     <img
@@ -641,8 +1091,10 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       alt={photo.title}
                       loading="lazy"
                       decoding="async"
+                      draggable={false}
+                      onContextMenu={e => e.preventDefault()}
                       onError={e => handleImageError(e, photo.url)}
-                      className={`w-full h-full ${
+                      className={`w-full h-full select-none ${
                         photo.id === 'photo_emblem' ? 'object-contain p-4 bg-gradient-to-br from-slate-50 via-emerald-50/20 to-amber-50/30' : 'object-cover'
                       } group-hover:scale-105 transition-transform duration-500`}
                     />
@@ -653,19 +1105,6 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                         {catInfo.label}
                       </span>
                     </div>
-
-                    {/* Direct Download Button */}
-                    <button
-                      type="button"
-                      onClick={e => {
-                        e.stopPropagation();
-                        downloadImageSmoothly(photo.url, `${photo.title || photo.id}.jpg`, onShowToast);
-                      }}
-                      className="absolute top-3 left-3 p-2 bg-white/90 hover:bg-white text-slate-800 hover:text-emerald-800 rounded-xl shadow-md border border-slate-200/80 transition-all cursor-pointer z-10"
-                      title="تحميل الصورة مباشرة"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
 
                     {/* Hover Overlay */}
                     <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -697,7 +1136,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       <h4
                         onClick={() => {
                           setSelectedPhotoIndex(index);
-                          setLightboxZoom(1);
+                          resetLightboxTransform();
                         }}
                         className="text-base font-bold font-['Alexandria'] text-slate-900 group-hover:text-emerald-800 transition-colors cursor-pointer leading-snug"
                       >
@@ -743,30 +1182,19 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       )}
                     </div>
 
-                    {/* Card Footer Actions */}
+                    {/* Card Footer Actions (View Only - No Download Button) */}
                     <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => {
                             setSelectedPhotoIndex(index);
-                            setLightboxZoom(1);
+                            resetLightboxTransform();
                           }}
-                          className="text-xs font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 cursor-pointer"
+                          className="text-xs font-bold text-emerald-800 hover:text-emerald-950 flex items-center gap-1.5 cursor-pointer"
                         >
+                          <Maximize2 className="w-3.5 h-3.5 text-emerald-700" />
                           <span>استعراض</span>
-                        </button>
-
-                        <span className="text-slate-300">|</span>
-
-                        <button
-                          type="button"
-                          onClick={() => downloadImageSmoothly(photo.url, `${photo.title || photo.id}.jpg`, onShowToast)}
-                          className="text-xs font-bold text-slate-600 hover:text-emerald-800 flex items-center gap-1 cursor-pointer"
-                          title="تحميل الصورة للجهاز"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>تحميل</span>
                         </button>
                       </div>
 
@@ -808,10 +1236,10 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
         )}
       </div>
 
-      {/* 4. Fullscreen Lightbox & Notes Modal */}
+      {/* 4. Fullscreen Lightbox & Notes Modal (Interactive 2-Finger Pinch-to-Zoom 1x-5x, Pan & Double-Tap) */}
       {currentPhoto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[94vh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col font-['Readex_Pro',sans-serif]">
+          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col font-['Readex_Pro',sans-serif]">
             {/* Modal Header */}
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50">
               <div className="flex items-center gap-2 min-w-0">
@@ -825,16 +1253,6 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
               </div>
 
               <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => downloadImageSmoothly(currentPhoto.url, `${currentPhoto.title || currentPhoto.id}.jpg`, onShowToast)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  title="تحميل الصورة بالحجم الكامل"
-                >
-                  <Download className="w-4 h-4 text-emerald-700" />
-                  <span>تحميل</span>
-                </button>
-
                 {isAuthorized && onOpenEditDocumentModal && (
                   <button
                     type="button"
@@ -848,7 +1266,10 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => setSelectedPhotoIndex(null)}
+                  onClick={() => {
+                    setSelectedPhotoIndex(null);
+                    resetLightboxTransform();
+                  }}
                   className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -858,60 +1279,125 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
 
             {/* Modal Content */}
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-              <div className="relative flex-1 bg-slate-950 flex items-center justify-center overflow-hidden min-h-[260px] sm:min-h-[360px] lg:min-h-[480px]">
-                <img
-                  src={currentPhoto.url}
-                  alt={currentPhoto.title}
-                  loading="lazy"
-                  decoding="async"
-                  onError={e => handleImageError(e, currentPhoto.url)}
-                  style={{ transform: `scale(${lightboxZoom})` }}
-                  className="max-h-full max-w-full object-contain transition-transform duration-200 select-none"
-                />
+              {/* Interactive Image Viewport + Bottom Zoom Controls */}
+              <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden min-h-[300px] sm:min-h-[380px] lg:min-h-[480px]">
+                {/* Pinch-to-Zoom & Pan Viewport (`touch-action: none` so two-finger gestures are never blocked) */}
+                <div
+                  onTouchStart={handleLbTouchStart}
+                  onTouchMove={handleLbTouchMove}
+                  onTouchEnd={handleLbTouchEnd}
+                  onTouchCancel={handleLbTouchEnd}
+                  onMouseDown={handleLbMouseDown}
+                  onMouseMove={handleLbMouseMove}
+                  onMouseUp={handleLbMouseUp}
+                  onMouseLeave={handleLbMouseUp}
+                  onWheel={handleLbWheel}
+                  onDoubleClick={handleLbDoubleClick}
+                  onContextMenu={e => e.preventDefault()}
+                  style={{ touchAction: 'none' }}
+                  className={`relative flex-1 flex items-center justify-center overflow-hidden select-none ${
+                    lightboxZoom > 1
+                      ? isLightboxDragging
+                        ? 'cursor-grabbing'
+                        : 'cursor-grab'
+                      : 'cursor-zoom-in'
+                  }`}
+                >
+                  <div
+                    style={{
+                      transform: `translate3d(${lightboxPan.x}px, ${lightboxPan.y}px, 0) scale(${lightboxZoom})`,
+                      transformOrigin: 'center center',
+                      transition: isLightboxDragging ? 'none' : 'transform 0.16s ease-out'
+                    }}
+                    className="w-full h-full flex items-center justify-center select-none pointer-events-none"
+                  >
+                    <img
+                      src={currentPhoto.url}
+                      alt={currentPhoto.title}
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                      onContextMenu={e => e.preventDefault()}
+                      onError={e => handleImageError(e, currentPhoto.url)}
+                      className="max-h-full max-w-full object-contain select-none pointer-events-none"
+                    />
+                  </div>
 
-                {/* Zoom Controls */}
-                <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1 bg-black/70 backdrop-blur-md px-2 py-1.5 rounded-xl text-white text-xs border border-white/20">
-                  <button
-                    onClick={() => setLightboxZoom(prev => Math.min(prev + 0.25, 3))}
-                    className="p-1 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-                    title="تكبير"
-                  >
-                    <ZoomIn className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setLightboxZoom(prev => Math.max(prev - 0.25, 0.5))}
-                    className="p-1 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-                    title="تصغير"
-                  >
-                    <ZoomOut className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setLightboxZoom(1)}
-                    className="p-1 hover:bg-white/20 rounded-lg transition-colors cursor-pointer"
-                    title="إعادة ضبط الحجم"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
+                  {filteredPhotos.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handlePrevPhoto}
+                        onTouchStart={e => e.stopPropagation()}
+                        className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
+                        title="السابق"
+                      >
+                        <ChevronRight className="w-5 h-5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNextPhoto}
+                        onTouchStart={e => e.stopPropagation()}
+                        className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
+                        title="التالي"
+                      >
+                        <ChevronLeft className="w-5 h-5" />
+                      </button>
+                    </>
+                  )}
                 </div>
 
-                {filteredPhotos.length > 1 && (
-                  <>
+                {/* Bottom Control Bar Below Viewer (+ تكبير / - تصغير / إعادة ضبط) */}
+                <div
+                  className="px-4 py-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-white z-20"
+                  onClick={e => e.stopPropagation()}
+                >
+                  <span className="text-[11px] text-slate-300 hidden sm:inline">
+                    اسحب بإصبعين للتكبير (Pinch-to-Zoom) أو انقر مرتين وحرّك في جميع الاتجاهات
+                  </span>
+
+                  <div className="flex items-center gap-2 mx-auto sm:mx-0">
                     <button
-                      onClick={handlePrevPhoto}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
-                      title="السابق"
+                      type="button"
+                      onClick={() => setLightboxZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                      title="تكبير (+)"
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <ZoomIn className="w-3.5 h-3.5" />
+                      <span>+ تكبير</span>
                     </button>
+
+                    <span className="text-xs font-bold px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-amber-300 tabular-nums">
+                      {Math.round(lightboxZoom * 100)}%
+                    </span>
+
                     <button
-                      onClick={handleNextPhoto}
-                      className="absolute left-4 top-1/2 -translate-y-1/2 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
-                      title="التالي"
+                      type="button"
+                      onClick={() =>
+                        setLightboxZoom(prev => {
+                          const next = Math.max(+(prev - 0.5).toFixed(2), 1);
+                          if (next <= 1) setLightboxPan({ x: 0, y: 0 });
+                          return next;
+                        })
+                      }
+                      className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                      title="تصغير (-)"
                     >
-                      <ChevronLeft className="w-5 h-5" />
+                      <ZoomOut className="w-3.5 h-3.5" />
+                      <span>- تصغير</span>
                     </button>
-                  </>
-                )}
+
+                    <button
+                      type="button"
+                      onClick={resetLightboxTransform}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                      title="إعادة ضبط الحجم"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>إعادة ضبط</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Sidebar Notes */}

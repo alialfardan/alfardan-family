@@ -35,6 +35,30 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [imageError, setImageError] = useState(false);
 
+  const touchStateRef = useRef<{
+    mode: 'none' | 'pan' | 'pinch';
+    startDist: number;
+    startZoom: number;
+    startX: number;
+    startY: number;
+    startPanX: number;
+    startPanY: number;
+    lastTapTime: number;
+    lastTapX: number;
+    lastTapY: number;
+  }>({
+    mode: 'none',
+    startDist: 0,
+    startZoom: 1,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0
+  });
+
   // Reset zoom and pan whenever modal opens or image changes
   useEffect(() => {
     if (isOpen) {
@@ -52,10 +76,10 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
       if (e.key === 'Escape') {
         onClose();
       } else if (e.key === '+' || e.key === '=') {
-        setZoomLevel(prev => Math.min(prev + 0.3, 4));
+        setZoomLevel(prev => Math.min(+(prev + 0.5).toFixed(2), 5));
       } else if (e.key === '-' || e.key === '_') {
         setZoomLevel(prev => {
-          const next = Math.max(prev - 0.3, 1);
+          const next = Math.max(+(prev - 0.5).toFixed(2), 1);
           if (next === 1) setPanOffset({ x: 0, y: 0 });
           return next;
         });
@@ -70,13 +94,13 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
 
   const handleZoomIn = (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    setZoomLevel(prev => Math.min(prev + 0.4, 4));
+    setZoomLevel(prev => Math.min(+(prev + 0.5).toFixed(2), 5));
   };
 
   const handleZoomOut = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     setZoomLevel(prev => {
-      const next = Math.max(prev - 0.4, 1);
+      const next = Math.max(+(prev - 0.5).toFixed(2), 1);
       if (next === 1) setPanOffset({ x: 0, y: 0 });
       return next;
     });
@@ -91,10 +115,11 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
   // Toggle zoom on double click
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (zoomLevel > 1) {
+    if (zoomLevel > 1.05) {
       handleResetZoom();
     } else {
-      setZoomLevel(2.2);
+      setZoomLevel(2.5);
+      setPanOffset({ x: 0, y: 0 });
     }
   };
 
@@ -102,36 +127,137 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     if (e.deltaY < 0) {
-      setZoomLevel(prev => Math.min(prev + 0.25, 4));
+      setZoomLevel(prev => Math.min(+(prev + 0.35).toFixed(2), 5));
     } else {
       setZoomLevel(prev => {
-        const next = Math.max(prev - 0.25, 1);
+        const next = Math.max(+(prev - 0.35).toFixed(2), 1);
         if (next === 1) setPanOffset({ x: 0, y: 0 });
         return next;
       });
     }
   };
 
-  // Drag to pan image when zoomed
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if (zoomLevel <= 1) return;
-    setIsDragging(true);
-    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  const getTouchDistance = (t1: React.Touch, t2: React.Touch) => {
+    return Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
   };
 
-  const handlePointerMove = (e: React.PointerEvent) => {
+  const handleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = getTouchDistance(e.touches[0], e.touches[1]);
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      touchStateRef.current.mode = 'pinch';
+      touchStateRef.current.startDist = Math.max(dist, 10);
+      touchStateRef.current.startZoom = zoomLevel;
+      touchStateRef.current.startX = midX;
+      touchStateRef.current.startY = midY;
+      touchStateRef.current.startPanX = panOffset.x;
+      touchStateRef.current.startPanY = panOffset.y;
+      setIsDragging(true);
+    } else if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const now = Date.now();
+      const dt = now - touchStateRef.current.lastTapTime;
+      const dx = Math.abs(touch.clientX - touchStateRef.current.lastTapX);
+      const dy = Math.abs(touch.clientY - touchStateRef.current.lastTapY);
+
+      if (dt > 0 && dt < 300 && dx < 30 && dy < 30) {
+        e.preventDefault();
+        if (zoomLevel > 1.05) {
+          handleResetZoom();
+        } else {
+          setZoomLevel(2.5);
+          setPanOffset({ x: 0, y: 0 });
+        }
+        touchStateRef.current.lastTapTime = 0;
+        touchStateRef.current.mode = 'none';
+        return;
+      }
+
+      touchStateRef.current.lastTapTime = now;
+      touchStateRef.current.lastTapX = touch.clientX;
+      touchStateRef.current.lastTapY = touch.clientY;
+
+      if (zoomLevel > 1) {
+        touchStateRef.current.mode = 'pan';
+        touchStateRef.current.startX = touch.clientX;
+        touchStateRef.current.startY = touch.clientY;
+        touchStateRef.current.startPanX = panOffset.x;
+        touchStateRef.current.startPanY = panOffset.y;
+        setIsDragging(true);
+      } else {
+        touchStateRef.current.mode = 'none';
+      }
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 2 && touchStateRef.current.mode === 'pinch') {
+      e.preventDefault();
+      const dist = getTouchDistance(e.touches[0], e.touches[1]);
+      const scaleRatio = dist / touchStateRef.current.startDist;
+      const nextZoom = Math.min(Math.max(touchStateRef.current.startZoom * scaleRatio, 1), 5);
+      setZoomLevel(nextZoom);
+
+      if (nextZoom <= 1.02) {
+        setPanOffset({ x: 0, y: 0 });
+      } else {
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        setPanOffset({
+          x: touchStateRef.current.startPanX + (midX - touchStateRef.current.startX),
+          y: touchStateRef.current.startPanY + (midY - touchStateRef.current.startY)
+        });
+      }
+    } else if (e.touches.length === 1 && touchStateRef.current.mode === 'pan' && zoomLevel > 1) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      setPanOffset({
+        x: touchStateRef.current.startPanX + (touch.clientX - touchStateRef.current.startX),
+        y: touchStateRef.current.startPanY + (touch.clientY - touchStateRef.current.startY)
+      });
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 1 && zoomLevel > 1) {
+      const touch = e.touches[0];
+      touchStateRef.current.mode = 'pan';
+      touchStateRef.current.startX = touch.clientX;
+      touchStateRef.current.startY = touch.clientY;
+      touchStateRef.current.startPanX = panOffset.x;
+      touchStateRef.current.startPanY = panOffset.y;
+    } else if (e.touches.length === 0) {
+      touchStateRef.current.mode = 'none';
+      setIsDragging(false);
+      if (zoomLevel <= 1.02) {
+        setZoomLevel(1);
+        setPanOffset({ x: 0, y: 0 });
+      }
+    }
+  };
+
+  // Drag to pan image when zoomed (desktop mouse)
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (zoomLevel <= 1) return;
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - panOffset.x, y: e.clientY - panOffset.y });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDragging || zoomLevel <= 1) return;
+    e.preventDefault();
     setPanOffset({
       x: e.clientX - dragStart.x,
       y: e.clientY - dragStart.y
     });
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
+  const handleMouseUp = () => {
     if (isDragging) {
       setIsDragging(false);
-      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
     }
   };
 
@@ -143,7 +269,7 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl max-w-3xl w-full my-auto shadow-2xl border border-slate-200 text-slate-800 font-['Readex_Pro',sans-serif] overflow-hidden flex flex-col max-h-[94vh] animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl max-w-3xl w-full my-auto shadow-2xl border border-slate-200 text-slate-800 font-['Readex_Pro',sans-serif] overflow-hidden flex flex-col max-h-[94dvh] animate-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
       >
         {/* Header Bar */}
@@ -186,17 +312,23 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
           </button>
         </div>
 
-        {/* Image Display Area with Pure Zooming and Pan */}
+        {/* Image Display Area with 2-Finger Pinch-to-Zoom (1x-5x), Pan & Double-Tap */}
         <div
-          className={`relative bg-slate-950 flex-1 min-h-[340px] sm:min-h-[460px] max-h-[66vh] overflow-hidden flex items-center justify-center p-4 ${
+          style={{ touchAction: 'none' }}
+          className={`relative bg-slate-950 flex-1 min-h-[340px] sm:min-h-[460px] max-h-[66vh] overflow-hidden flex items-center justify-center p-4 select-none ${
             zoomLevel > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in'
           }`}
           onWheel={handleWheel}
           onDoubleClick={handleDoubleClick}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onContextMenu={e => e.preventDefault()}
         >
           {imageError ? (
             <div className="text-center text-slate-400 p-8 flex flex-col items-center justify-center gap-3">
@@ -205,15 +337,17 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
             </div>
           ) : (
             <div
-              className="w-full h-full flex items-center justify-center transition-transform duration-100 ease-out select-none"
+              className="w-full h-full flex items-center justify-center select-none pointer-events-none"
               style={{
-                transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomLevel})`
+                transform: `translate3d(${panOffset.x}px, ${panOffset.y}px, 0) scale(${zoomLevel})`,
+                transition: isDragging ? 'none' : 'transform 0.16s ease-out'
               }}
             >
               <img
                 src={photoUrl}
                 alt={personName}
                 onError={() => setImageError(true)}
+                onContextMenu={e => e.preventDefault()}
                 draggable={false}
                 className="max-w-full max-h-[60vh] object-contain rounded-2xl shadow-2xl transition-shadow select-none pointer-events-none"
                 style={{
@@ -225,34 +359,40 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
 
           {/* Floating Zoom Controls Bar */}
           <div
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3.5 py-1.5 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/20 text-white shadow-2xl"
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3.5 py-1.5 bg-slate-900/90 backdrop-blur-md rounded-2xl border border-white/20 text-white shadow-2xl z-20"
             onClick={e => e.stopPropagation()}
+            onTouchStart={e => e.stopPropagation()}
           >
             <button
+              type="button"
               onClick={handleZoomIn}
-              className="p-1.5 hover:bg-white/20 rounded-xl transition-colors cursor-pointer active:scale-95"
+              className="flex items-center gap-1 px-2.5 py-1 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors cursor-pointer active:scale-95"
               title="تكبير (+)"
             >
               <ZoomIn className="w-4 h-4 text-white" />
+              <span>+ تكبير</span>
             </button>
-            <button
-              onClick={handleZoomOut}
-              className="p-1.5 hover:bg-white/20 rounded-xl transition-colors cursor-pointer active:scale-95"
-              title="تصغير (-)"
-            >
-              <ZoomOut className="w-4 h-4 text-white" />
-            </button>
-            <button
-              onClick={handleResetZoom}
-              className="p-1.5 hover:bg-white/20 rounded-xl transition-colors cursor-pointer active:scale-95"
-              title="إعادة ضبط الحجم الطبيعي (100%)"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-white" />
-            </button>
-            <span className="w-px h-4 bg-white/20 mx-0.5" />
             <span className="text-xs font-mono font-bold text-amber-300 px-1.5 min-w-[3rem] text-center">
               {Math.round(zoomLevel * 100)}%
             </span>
+            <button
+              type="button"
+              onClick={handleZoomOut}
+              className="flex items-center gap-1 px-2.5 py-1 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors cursor-pointer active:scale-95"
+              title="تصغير (-)"
+            >
+              <ZoomOut className="w-4 h-4 text-white" />
+              <span>- تصغير</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleResetZoom}
+              className="flex items-center gap-1 px-2.5 py-1 hover:bg-white/20 rounded-xl text-xs font-bold transition-colors cursor-pointer active:scale-95"
+              title="إعادة ضبط الحجم الطبيعي (100%)"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-white" />
+              <span>إعادة ضبط</span>
+            </button>
           </div>
 
           {zoomLevel > 1 && (
