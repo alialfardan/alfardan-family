@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Award,
   Search,
@@ -588,11 +589,14 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
       )}
 
       {/* Detailed Biography & Manuscripts Modal */}
-      {selectedFigure && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
-          onClick={() => setSelectedFigure(null)}
-        >
+      {selectedFigure &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            dir="rtl"
+            className="fixed inset-0 z-[999990] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto font-['Readex_Pro',sans-serif]"
+            onClick={() => setSelectedFigure(null)}
+          >
           <div
             className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
@@ -787,88 +791,115 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Interactive Zoomable Manuscript Lightbox */}
-      {activeManuscript && (
-        <div
-          className="fixed inset-0 z-[60] bg-slate-950/90 backdrop-blur-md flex flex-col"
-          onClick={() => setActiveManuscript(null)}
-        >
-          <div
-            className="flex items-center justify-between px-4 sm:px-6 py-3.5 bg-slate-900/90 border-b border-slate-800 text-white"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="min-w-0">
-              <h3 className="text-sm sm:text-base font-black truncate">{activeManuscript.title}</h3>
-              {activeManuscript.era && (
-                <p className="text-[11px] text-amber-300">{activeManuscript.era}</p>
-              )}
             </div>
+          </div>,
+          document.body
+        )}
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setMsZoom((z) => Math.min(4, +(z + 0.4).toFixed(1)))}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors"
-                title="تكبير"
-              >
-                <ZoomIn className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setMsZoom((z) => Math.max(0.6, +(z - 0.4).toFixed(1)))}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors"
-                title="تصغير"
-              >
-                <ZoomOut className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setMsZoom(1)}
-                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white transition-colors"
-                title="إعادة ضبط الحجم"
-              >
-                <RotateCcw className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => downloadImageSmoothly(activeManuscript.url, `${activeManuscript.title}.jpg`, onShowToast)}
-                className="p-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white transition-colors"
-                title="تنزيل المخطوطة"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setActiveManuscript(null)}
-                className="p-2 rounded-xl bg-red-600/80 hover:bg-red-600 text-white transition-colors"
-                title="إغلاق"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
+      {/* Interactive Zoomable Manuscript Lightbox via React Portal */}
+      {activeManuscript &&
+        typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className="flex-1 overflow-auto flex items-center justify-center p-4"
-            onClick={(e) => e.stopPropagation()}
+            dir="rtl"
+            className="doc-viewer-backdrop fixed inset-0 z-[999999] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 font-['Readex_Pro',sans-serif]"
+            onClick={() => setActiveManuscript(null)}
           >
-            <img
-              src={activeManuscript.url}
-              alt={activeManuscript.title}
-              style={{ transform: `scale(${msZoom})`, transformOrigin: 'center center' }}
-              className="max-w-full max-h-full object-contain transition-transform duration-150 rounded-xl shadow-2xl"
-            />
-          </div>
-
-          {activeManuscript.description && (
             <div
-              className="px-6 py-3 bg-slate-900/95 border-t border-slate-800 text-center text-xs sm:text-sm text-slate-200"
+              className="doc-viewer-modal bg-white rounded-3xl max-w-5xl w-full h-[94dvh] max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              {activeManuscript.description}
+              {/* Sticky Top Header: Right = Counter, Center = Manuscript Title, Left = Large Clear Close Button (✕) */}
+              <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 pb-3 pt-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 font-mono tabular-nums">
+                    1 / 1
+                  </span>
+                </div>
+
+                <div className="flex-1 text-center min-w-0 px-2">
+                  <h3 className="text-xs sm:text-sm font-black text-slate-900 truncate">{activeManuscript.title}</h3>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => downloadImageSmoothly(activeManuscript.url, `${activeManuscript.title}.jpg`, onShowToast)}
+                    className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
+                    title="تنزيل المخطوطة"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setActiveManuscript(null)}
+                    aria-label="إغلاق المخطوطة"
+                    className="flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-3 py-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer shadow-2xs"
+                    title="إغلاق"
+                  >
+                    <span className="text-base leading-none font-black">✕</span>
+                    <span className="hidden sm:inline">إغلاق</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="doc-viewer-stage-full flex-1 flex flex-col bg-slate-950 overflow-hidden min-h-0">
+                <div
+                  className="flex-1 overflow-auto flex items-center justify-center p-4"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <img
+                    src={activeManuscript.url}
+                    alt={activeManuscript.title}
+                    style={{ transform: `scale(${msZoom})`, transformOrigin: 'center center' }}
+                    className="max-w-full max-h-full object-contain transition-transform duration-150 rounded-xl shadow-2xl"
+                  />
+                </div>
+
+                <div
+                  className="px-4 py-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-center gap-2 text-white shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setMsZoom((z) => Math.min(4, +(z + 0.4).toFixed(1)))}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-colors cursor-pointer"
+                    title="تكبير"
+                  >
+                    <ZoomIn className="w-4 h-4" />
+                    <span>+ تكبير</span>
+                  </button>
+                  <span className="text-xs font-bold px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg text-amber-300 tabular-nums">
+                    {Math.round(msZoom * 100)}%
+                  </span>
+                  <button
+                    onClick={() => setMsZoom((z) => Math.max(0.6, +(z - 0.4).toFixed(1)))}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white text-xs font-bold transition-colors cursor-pointer"
+                    title="تصغير"
+                  >
+                    <ZoomOut className="w-4 h-4" />
+                    <span>- تصغير</span>
+                  </button>
+                  <button
+                    onClick={() => setMsZoom(1)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 text-xs font-bold transition-colors cursor-pointer"
+                    title="إعادة ضبط الحجم"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>إعادة ضبط</span>
+                  </button>
+                </div>
+
+                {activeManuscript.description && (
+                  <div
+                    className="px-6 py-3 bg-slate-900/95 border-t border-slate-800 text-center text-xs sm:text-sm text-slate-200 shrink-0"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {activeManuscript.description}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {/* Admin Add / Edit Notable Figure Modal */}
       {isEditorOpen && isAuthorized && (

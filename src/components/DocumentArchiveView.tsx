@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ArchivalPhoto, FamilyTreeProcessed } from '../types/family';
 import {
   ZoomIn,
@@ -729,13 +730,11 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
             onDoubleClick={handleDocDoubleClick}
             onContextMenu={e => e.preventDefault()}
             style={{
-              touchAction: docZoom > 1 || isFullscreen ? 'none' : 'pan-y'
+              touchAction: docZoom > 1 ? 'none' : 'pan-y'
             }}
-            className={`relative overflow-hidden rounded-2xl bg-[#e5e7eb] border border-slate-300 p-2 sm:p-4 flex items-center justify-center select-none ${
-              isFullscreen
-                ? 'fixed inset-2 sm:inset-4 z-50 bg-slate-950/95 p-4 sm:p-6 pb-20'
-                : 'min-h-[380px] sm:min-h-[480px] max-h-[680px]'
-            } ${docZoom > 1 ? (isDocDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in'}`}
+            className={`relative overflow-hidden rounded-2xl bg-[#e5e7eb] border border-slate-300 p-2 sm:p-4 flex items-center justify-center select-none min-h-[380px] sm:min-h-[480px] max-h-[680px] ${
+              docZoom > 1 ? (isDocDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in'
+            }`}
           >
             <div
               style={{
@@ -756,69 +755,150 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                 className="w-full h-auto max-h-[78vh] object-contain rounded-lg shadow-2xl bg-white select-none pointer-events-none"
               />
             </div>
-
-            {isFullscreen && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsFullscreen(false);
-                    resetDocTransform();
-                  }}
-                  className="absolute top-4 left-4 z-30 px-4 py-2 bg-white text-slate-900 rounded-xl text-xs font-bold shadow-lg cursor-pointer"
-                >
-                  إغلاق ملء الشاشة ✕
-                </button>
-
-                {/* Bottom Zoom Control Bar in Fullscreen */}
-                <div
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-2xl border border-white/20 text-white"
-                  onClick={e => e.stopPropagation()}
-                  onTouchStart={e => e.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setDocZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
-                    title="تكبير (+)"
-                  >
-                    <ZoomIn className="w-4 h-4" />
-                    <span>+ تكبير</span>
-                  </button>
-
-                  <span className="text-xs font-bold px-2 tabular-nums text-amber-300">
-                    {Math.round(docZoom * 100)}%
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDocZoom(prev => {
-                        const next = Math.max(+(prev - 0.5).toFixed(2), 1);
-                        if (next <= 1) setDocPan({ x: 0, y: 0 });
-                        return next;
-                      })
-                    }
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
-                    title="تصغير (-)"
-                  >
-                    <ZoomOut className="w-4 h-4" />
-                    <span>- تصغير</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={resetDocTransform}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
-                    title="إعادة ضبط الحجم"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>إعادة ضبط</span>
-                  </button>
-                </div>
-              </>
-            )}
           </div>
+
+          {/* Fullscreen Original Document Portal Modal (Covers Top Header & Right Sidebar 100% on all Mobile & PWA screens) */}
+          {isFullscreen &&
+            typeof document !== 'undefined' &&
+            createPortal(
+              <div
+                dir="rtl"
+                className="doc-viewer-backdrop fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in font-['Readex_Pro',sans-serif]"
+                onClick={() => {
+                  setIsFullscreen(false);
+                  resetDocTransform();
+                }}
+              >
+                <div
+                  className="doc-viewer-modal bg-white rounded-3xl max-w-6xl w-full h-[94dvh] max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Sticky Top Header: Right = Counter, Center = Document Title, Left = Large Clear Close Button (✕) */}
+                  <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 pb-3 pt-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+                    {/* Right: Counter */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 font-mono tabular-nums">
+                        1 / 1
+                      </span>
+                    </div>
+
+                    {/* Center: Document Title */}
+                    <h3 className="flex-1 text-center text-xs sm:text-sm font-bold font-['Alexandria'] text-slate-900 truncate px-2">
+                      مخطوطة ووثيقة شجرة نسب عائلة الفردان الأصلية
+                    </h3>
+
+                    {/* Left: Close Button (✕) */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsFullscreen(false);
+                          resetDocTransform();
+                        }}
+                        aria-label="إغلاق نافذة الوثيقة"
+                        className="flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-3 py-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer shadow-2xs"
+                      >
+                        <span className="text-base leading-none font-black">✕</span>
+                        <span className="hidden sm:inline">إغلاق</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Interactive Fullscreen Document Stage */}
+                  <div className="doc-viewer-stage-full flex-1 flex flex-col bg-slate-950 overflow-hidden min-h-0">
+                    <div
+                      onTouchStart={handleDocTouchStart}
+                      onTouchMove={handleDocTouchMove}
+                      onTouchEnd={handleDocTouchEnd}
+                      onTouchCancel={handleDocTouchEnd}
+                      onMouseDown={handleDocMouseDown}
+                      onMouseMove={handleDocMouseMove}
+                      onMouseUp={handleDocMouseUp}
+                      onMouseLeave={handleDocMouseUp}
+                      onWheel={handleDocWheel}
+                      onDoubleClick={handleDocDoubleClick}
+                      onContextMenu={e => e.preventDefault()}
+                      style={{ touchAction: 'none' }}
+                      className={`relative flex-1 flex items-center justify-center overflow-hidden select-none p-2 sm:p-4 ${
+                        docZoom > 1 ? (isDocDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-zoom-in'
+                      }`}
+                    >
+                      <div
+                        style={{
+                          transform: `translate3d(${docPan.x}px, ${docPan.y}px, 0) scale(${docZoom})`,
+                          transformOrigin: 'center center',
+                          transition: isDocDragging ? 'none' : 'transform 0.18s ease-out'
+                        }}
+                        className="w-full h-full flex items-center justify-center select-none pointer-events-none"
+                      >
+                        <img
+                          src={primaryDocUrl}
+                          alt="مخطوطة ووثيقة شجرة نسب عائلة الفردان الأصلية"
+                          draggable={false}
+                          onContextMenu={e => e.preventDefault()}
+                          onError={e => handleImageError(e, primaryDocUrl)}
+                          className="max-w-full max-h-full object-contain rounded-lg shadow-2xl bg-white select-none pointer-events-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Bottom Zoom Control Bar in Fullscreen */}
+                    <div
+                      className="px-4 py-3 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-center sm:justify-between gap-2 text-white z-20 shrink-0"
+                      onClick={e => e.stopPropagation()}
+                      onTouchStart={e => e.stopPropagation()}
+                    >
+                      <span className="text-[11px] text-slate-300 hidden sm:inline">
+                        اسحب بإصبعين للتكبير (Pinch-to-Zoom) أو انقر مرتين وحرّك في جميع الاتجاهات
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDocZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
+                          title="تكبير (+)"
+                        >
+                          <ZoomIn className="w-4 h-4" />
+                          <span>+ تكبير</span>
+                        </button>
+
+                        <span className="text-xs font-bold px-2.5 py-1 bg-slate-800 border border-slate-700 rounded-lg tabular-nums text-amber-300">
+                          {Math.round(docZoom * 100)}%
+                        </span>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDocZoom(prev => {
+                              const next = Math.max(+(prev - 0.5).toFixed(2), 1);
+                              if (next <= 1) setDocPan({ x: 0, y: 0 });
+                              return next;
+                            })
+                          }
+                          className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
+                          title="تصغير (-)"
+                        >
+                          <ZoomOut className="w-4 h-4" />
+                          <span>- تصغير</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={resetDocTransform}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition-all"
+                          title="إعادة ضبط الحجم"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>إعادة ضبط</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
 
           {/* Dedicated Bottom Control Bar Below Main Document Viewer (+ تكبير / - تصغير / إعادة ضبط) */}
           <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 border border-slate-200/90 rounded-2xl px-4 py-2.5">
@@ -1236,252 +1316,270 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
         )}
       </div>
 
-      {/* 4. Fullscreen Lightbox & Notes Modal (Interactive 2-Finger Pinch-to-Zoom 1x-5x, Pan & Double-Tap) */}
-      {currentPhoto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col font-['Readex_Pro',sans-serif]">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 bg-slate-50">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-xs font-bold text-slate-500 font-mono">
-                  {selectedPhotoIndex! + 1} / {filteredPhotos.length}
-                </span>
-                <span className="w-1 h-1 rounded-full bg-slate-300" />
-                <h3 className="text-sm font-bold font-['Alexandria'] text-slate-900 truncate">
+      {/* 4. Fullscreen Lightbox & Notes Modal via React Portal (Covers Top Header & Right Sidebar 100% on all Mobile & PWA screens) */}
+      {currentPhoto &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            dir="rtl"
+            className="doc-viewer-backdrop fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in font-['Readex_Pro',sans-serif]"
+            onClick={() => {
+              setSelectedPhotoIndex(null);
+              resetLightboxTransform();
+            }}
+          >
+            <div
+              className="doc-viewer-modal bg-white rounded-3xl max-w-5xl w-full max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col font-['Readex_Pro',sans-serif]"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Sticky Modal Header: Right = Counter, Center = Document Title, Left = Large Clear Close Button (✕) */}
+              <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 pb-3 pt-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+                {/* Right: Image Counter */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 font-mono tabular-nums">
+                    {selectedPhotoIndex! + 1} / {filteredPhotos.length}
+                  </span>
+                </div>
+
+                {/* Center: Document Title */}
+                <h3 className="flex-1 text-center text-xs sm:text-sm font-bold font-['Alexandria'] text-slate-900 truncate px-2">
                   {currentPhoto.title}
                 </h3>
-              </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {isAuthorized && onOpenEditDocumentModal && (
+                {/* Left: Admin Edit + Large Clear Close Button (✕) */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {isAuthorized && onOpenEditDocumentModal && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenEditDocumentModal(currentPhoto)}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">تعديل</span>
+                    </button>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() => onOpenEditDocumentModal(currentPhoto)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                    <span>تعديل</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedPhotoIndex(null);
-                    resetLightboxTransform();
-                  }}
-                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Content */}
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-              {/* Interactive Image Viewport + Bottom Zoom Controls */}
-              <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden min-h-[300px] sm:min-h-[380px] lg:min-h-[480px]">
-                {/* Pinch-to-Zoom & Pan Viewport (`touch-action: none` so two-finger gestures are never blocked) */}
-                <div
-                  onTouchStart={handleLbTouchStart}
-                  onTouchMove={handleLbTouchMove}
-                  onTouchEnd={handleLbTouchEnd}
-                  onTouchCancel={handleLbTouchEnd}
-                  onMouseDown={handleLbMouseDown}
-                  onMouseMove={handleLbMouseMove}
-                  onMouseUp={handleLbMouseUp}
-                  onMouseLeave={handleLbMouseUp}
-                  onWheel={handleLbWheel}
-                  onDoubleClick={handleLbDoubleClick}
-                  onContextMenu={e => e.preventDefault()}
-                  style={{ touchAction: 'none' }}
-                  className={`relative flex-1 flex items-center justify-center overflow-hidden select-none ${
-                    lightboxZoom > 1
-                      ? isLightboxDragging
-                        ? 'cursor-grabbing'
-                        : 'cursor-grab'
-                      : 'cursor-zoom-in'
-                  }`}
-                >
-                  <div
-                    style={{
-                      transform: `translate3d(${lightboxPan.x}px, ${lightboxPan.y}px, 0) scale(${lightboxZoom})`,
-                      transformOrigin: 'center center',
-                      transition: isLightboxDragging ? 'none' : 'transform 0.16s ease-out'
+                    onClick={() => {
+                      setSelectedPhotoIndex(null);
+                      resetLightboxTransform();
                     }}
-                    className="w-full h-full flex items-center justify-center select-none pointer-events-none"
+                    aria-label="إغلاق الوثيقة"
+                    className="flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-3 py-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer shadow-2xs"
                   >
-                    <img
-                      src={currentPhoto.url}
-                      alt={currentPhoto.title}
-                      loading="lazy"
-                      decoding="async"
-                      draggable={false}
-                      onContextMenu={e => e.preventDefault()}
-                      onError={e => handleImageError(e, currentPhoto.url)}
-                      className="max-h-full max-w-full object-contain select-none pointer-events-none"
-                    />
+                    <span className="text-base leading-none font-black">✕</span>
+                    <span className="hidden sm:inline">إغلاق</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Content */}
+              <div className="doc-viewer-body flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+                {/* Interactive Image Viewport + Bottom Zoom Controls */}
+                <div className="doc-viewer-stage flex-1 flex flex-col bg-slate-950 overflow-hidden min-h-[300px] sm:min-h-[380px] lg:min-h-[480px]">
+                  {/* Pinch-to-Zoom & Pan Viewport (`touch-action: none` so two-finger gestures are never blocked) */}
+                  <div
+                    onTouchStart={handleLbTouchStart}
+                    onTouchMove={handleLbTouchMove}
+                    onTouchEnd={handleLbTouchEnd}
+                    onTouchCancel={handleLbTouchEnd}
+                    onMouseDown={handleLbMouseDown}
+                    onMouseMove={handleLbMouseMove}
+                    onMouseUp={handleLbMouseUp}
+                    onMouseLeave={handleLbMouseUp}
+                    onWheel={handleLbWheel}
+                    onDoubleClick={handleLbDoubleClick}
+                    onContextMenu={e => e.preventDefault()}
+                    style={{ touchAction: 'none' }}
+                    className={`relative flex-1 flex items-center justify-center overflow-hidden select-none ${
+                      lightboxZoom > 1
+                        ? isLightboxDragging
+                          ? 'cursor-grabbing'
+                          : 'cursor-grab'
+                        : 'cursor-zoom-in'
+                    }`}
+                  >
+                    <div
+                      style={{
+                        transform: `translate3d(${lightboxPan.x}px, ${lightboxPan.y}px, 0) scale(${lightboxZoom})`,
+                        transformOrigin: 'center center',
+                        transition: isLightboxDragging ? 'none' : 'transform 0.16s ease-out'
+                      }}
+                      className="w-full h-full flex items-center justify-center select-none pointer-events-none"
+                    >
+                      <img
+                        src={currentPhoto.url}
+                        alt={currentPhoto.title}
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                        onContextMenu={e => e.preventDefault()}
+                        onError={e => handleImageError(e, currentPhoto.url)}
+                        className="max-h-full max-w-full object-contain select-none pointer-events-none"
+                      />
+                    </div>
+
+                    {filteredPhotos.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handlePrevPhoto}
+                          onTouchStart={e => e.stopPropagation()}
+                          className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
+                          title="السابق"
+                        >
+                          <ChevronRight className="w-5 h-5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleNextPhoto}
+                          onTouchStart={e => e.stopPropagation()}
+                          className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
+                          title="التالي"
+                        >
+                          <ChevronLeft className="w-5 h-5" />
+                        </button>
+                      </>
+                    )}
                   </div>
 
-                  {filteredPhotos.length > 1 && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={handlePrevPhoto}
-                        onTouchStart={e => e.stopPropagation()}
-                        className="absolute right-3 sm:right-4 top-1/2 -translate-y-1/2 z-20 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
-                        title="السابق"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleNextPhoto}
-                        onTouchStart={e => e.stopPropagation()}
-                        className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 z-20 p-2.5 bg-black/60 hover:bg-black/90 text-white rounded-full transition-all border border-white/20 cursor-pointer"
-                        title="التالي"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                    </>
-                  )}
-                </div>
-
-                {/* Bottom Control Bar Below Viewer (+ تكبير / - تصغير / إعادة ضبط) */}
-                <div
-                  className="px-4 py-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-white z-20"
-                  onClick={e => e.stopPropagation()}
-                >
-                  <span className="text-[11px] text-slate-300 hidden sm:inline">
-                    اسحب بإصبعين للتكبير (Pinch-to-Zoom) أو انقر مرتين وحرّك في جميع الاتجاهات
-                  </span>
-
-                  <div className="flex items-center gap-2 mx-auto sm:mx-0">
-                    <button
-                      type="button"
-                      onClick={() => setLightboxZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
-                      title="تكبير (+)"
-                    >
-                      <ZoomIn className="w-3.5 h-3.5" />
-                      <span>+ تكبير</span>
-                    </button>
-
-                    <span className="text-xs font-bold px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-amber-300 tabular-nums">
-                      {Math.round(lightboxZoom * 100)}%
+                  {/* Bottom Control Bar Below Viewer (+ تكبير / - تصغير / إعادة ضبط) */}
+                  <div
+                    className="px-4 py-2.5 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-2 text-white z-20 shrink-0"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <span className="text-[11px] text-slate-300 hidden sm:inline">
+                      اسحب بإصبعين للتكبير (Pinch-to-Zoom) أو انقر مرتين وحرّك في جميع الاتجاهات
                     </span>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setLightboxZoom(prev => {
-                          const next = Math.max(+(prev - 0.5).toFixed(2), 1);
-                          if (next <= 1) setLightboxPan({ x: 0, y: 0 });
-                          return next;
-                        })
-                      }
-                      className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
-                      title="تصغير (-)"
-                    >
-                      <ZoomOut className="w-3.5 h-3.5" />
-                      <span>- تصغير</span>
-                    </button>
+                    <div className="flex items-center gap-2 mx-auto sm:mx-0">
+                      <button
+                        type="button"
+                        onClick={() => setLightboxZoom(prev => Math.min(+(prev + 0.5).toFixed(2), 5))}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                        title="تكبير (+)"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                        <span>+ تكبير</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={resetLightboxTransform}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
-                      title="إعادة ضبط الحجم"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>إعادة ضبط</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
+                      <span className="text-xs font-bold px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-amber-300 tabular-nums">
+                        {Math.round(lightboxZoom * 100)}%
+                      </span>
 
-              {/* Sidebar Notes */}
-              <div className="w-full lg:w-96 border-t lg:border-t-0 lg:border-r border-slate-200 bg-white p-5 sm:p-6 overflow-y-auto space-y-5">
-                <div>
-                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 mb-2">
-                    {CATEGORY_MAP[currentPhoto.category || 'historical']?.label || 'أرشيف عام'}
-                  </span>
-                  <h2 className="text-lg font-bold font-['Alexandria'] text-slate-900 leading-snug">
-                    {currentPhoto.title}
-                  </h2>
-                </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLightboxZoom(prev => {
+                            const next = Math.max(+(prev - 0.5).toFixed(2), 1);
+                            if (next <= 1) setLightboxPan({ x: 0, y: 0 });
+                            return next;
+                          })
+                        }
+                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                        title="تصغير (-)"
+                      >
+                        <ZoomOut className="w-3.5 h-3.5" />
+                        <span>- تصغير</span>
+                      </button>
 
-                <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                  {currentPhoto.era && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                      <span><strong>الفترة:</strong> {currentPhoto.era}</span>
+                      <button
+                        type="button"
+                        onClick={resetLightboxTransform}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-400/30 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-95"
+                        title="إعادة ضبط الحجم"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>إعادة ضبط</span>
+                      </button>
                     </div>
-                  )}
-                  {currentPhoto.location && (
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span><strong>الموقع:</strong> {currentPhoto.location}</span>
-                    </div>
-                  )}
-                  {currentPhoto.addedBy && (
-                    <div className="flex items-center gap-2 text-slate-500 text-[11px]">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                      <span><strong>المصدر / التوثيق:</strong> {currentPhoto.addedBy}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
-                    <FileText className="w-4 h-4 text-emerald-700" />
-                    <span>الملاحظات والوصف التاريخي الكامل:</span>
-                  </div>
-                  <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-wrap">
-                    {currentPhoto.notes}
                   </div>
                 </div>
 
-                {registry && currentPhoto.taggedPersonKeys && currentPhoto.taggedPersonKeys.length > 0 && (
+                {/* Sidebar Notes */}
+                <div className="doc-viewer-notes w-full lg:w-96 border-t lg:border-t-0 lg:border-r border-slate-200 bg-white p-5 sm:p-6 overflow-y-auto space-y-5">
+                  <div>
+                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 mb-2">
+                      {CATEGORY_MAP[currentPhoto.category || 'historical']?.label || 'أرشيف عام'}
+                    </span>
+                    <h2 className="text-lg font-bold font-['Alexandria'] text-slate-900 leading-snug">
+                      {currentPhoto.title}
+                    </h2>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    {currentPhoto.era && (
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <span><strong>الفترة:</strong> {currentPhoto.era}</span>
+                      </div>
+                    )}
+                    {currentPhoto.location && (
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span><strong>الموقع:</strong> {currentPhoto.location}</span>
+                      </div>
+                    )}
+                    {currentPhoto.addedBy && (
+                      <div className="flex items-center gap-2 text-slate-500 text-[11px]">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                        <span><strong>المصدر / التوثيق:</strong> {currentPhoto.addedBy}</span>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="space-y-2">
-                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                      <Users className="w-4 h-4 text-slate-600" />
-                      <span>الأفراد الموثقون ({currentPhoto.taggedPersonKeys.length}):</span>
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                      <FileText className="w-4 h-4 text-emerald-700" />
+                      <span>الملاحظات والوصف التاريخي الكامل:</span>
                     </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                      {currentPhoto.taggedPersonKeys.map(key => {
-                        const person = registry.people.get(key);
-                        if (!person || (isPrivacyRestricted && person.gender === 'f')) return null;
-                        return (
-                          <div
-                            key={key}
-                            className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-emerald-50 border border-slate-200 transition-colors"
-                          >
-                            <div>
-                              <p className="text-xs font-bold text-slate-900">{person.name}</p>
-                              <p className="text-[10px] text-slate-500">الجيل {person.generation}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedPhotoIndex(null);
-                                handlePersonClick(key);
-                              }}
-                              className="px-2.5 py-1 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                            >
-                              عرض في الشجرة 🌳
-                            </button>
-                          </div>
-                        );
-                      })}
+                    <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-xs text-slate-800 leading-relaxed font-sans whitespace-pre-wrap">
+                      {currentPhoto.notes}
                     </div>
                   </div>
-                )}
+
+                  {registry && currentPhoto.taggedPersonKeys && currentPhoto.taggedPersonKeys.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                        <Users className="w-4 h-4 text-slate-600" />
+                        <span>الأفراد الموثقون ({currentPhoto.taggedPersonKeys.length}):</span>
+                      </div>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {currentPhoto.taggedPersonKeys.map(key => {
+                          const person = registry.people.get(key);
+                          if (!person || (isPrivacyRestricted && person.gender === 'f')) return null;
+                          return (
+                            <div
+                              key={key}
+                              className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-emerald-50 border border-slate-200 transition-colors"
+                            >
+                              <div>
+                                <p className="text-xs font-bold text-slate-900">{person.name}</p>
+                                <p className="text-[10px] text-slate-500">الجيل {person.generation}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedPhotoIndex(null);
+                                  handlePersonClick(key);
+                                }}
+                                className="px-2.5 py-1 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                              >
+                                عرض في الشجرة 🌳
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
