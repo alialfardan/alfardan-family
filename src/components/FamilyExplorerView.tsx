@@ -353,6 +353,10 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               شجرة عائلة الفردان
             </h1>
 
+            <p className="text-sm sm:text-lg font-bold font-['Alexandria'] text-emerald-800 tracking-wide text-center -mt-1">
+              كرزكان - البحرين
+            </p>
+
             <p className="text-xs sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed px-2">
               موثقة ومحققة عبر الأجيال ابتداءً من الجد الأكبر <strong>الشيخ علي</strong>
             </p>
