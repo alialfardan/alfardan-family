@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { ActiveTab, FamilyTreeProcessed } from '../types/family';
 import {
   Plus,
@@ -53,11 +53,42 @@ export const Navbar: React.FC<NavbarProps> = ({
   privacyModeEnabled = true,
   onTogglePrivacyMode,
 }) => {
+  const headerRef = useRef<HTMLElement>(null);
+  const [headerHeight, setHeaderHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+
+    const updateHeight = () => {
+      const h = el.offsetHeight;
+      if (h > 0) {
+        setHeaderHeight(h);
+      }
+    };
+
+    updateHeight();
+
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateHeight) : null;
+    if (observer) {
+      observer.observe(el);
+    }
+    window.addEventListener('resize', updateHeight);
+
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', updateHeight);
+    };
+  }, [isAuthorized, privacyModeEnabled]);
+
   return (
     <>
       {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-xs font-['Readex_Pro',sans-serif]">
-        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
+      <header
+        ref={headerRef}
+        className="sticky top-0 w-full right-0 left-0 z-40 bg-white/95 backdrop-blur-md border-b border-stone-200/80 font-['Readex_Pro',sans-serif]"
+      >
+        <div className="w-full max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-center justify-between min-h-16 sm:min-h-18 py-2 gap-2 sm:gap-4">
             {/* Logo & Family Brand */}
             <div
@@ -186,10 +217,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </header>
 
-      {/* Fixed Right-Side Navigation Rail - Exactly on the Right Side of Screen for all devices */}
+      {/* Fixed Right-Side Navigation Rail - Aligned seamlessly right below Header on all devices */}
       <aside
         aria-label="التنقل الرئيسي"
-        className="fixed right-0 top-16 bottom-0 z-40 w-16 sm:w-20 lg:w-22 bg-white/95 backdrop-blur-md border-l border-slate-200/90 shadow-[-4px_0_20px_rgba(0,0,0,0.06)] flex flex-col justify-between items-center py-2 px-1 select-none overflow-y-auto scrollbar-none"
+        style={headerHeight ? { top: `${headerHeight}px` } : undefined}
+        className="fixed right-0 top-16 sm:top-18 bottom-0 z-30 w-16 sm:w-20 lg:w-22 bg-white/95 backdrop-blur-md border-l border-stone-200/70 shadow-sm flex flex-col justify-between items-center pt-4 pb-2 px-1 select-none overflow-y-auto scrollbar-none"
       >
         {/* 1. الرئيسية وتصفح الذرية */}
         <button
