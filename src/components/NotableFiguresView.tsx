@@ -40,7 +40,7 @@ interface NotableFiguresViewProps {
 
 const BRANCH_FILTER_OPTIONS = [
   { id: 'all', label: 'جميع الأعلام' },
-  { id: 'سلسلة الأجداد المؤسسين', label: 'الأجداد المؤسسون' },
+  { id: 'سلسلة الأجداد المؤسسين', label: 'شخصيات عامة' },
   { id: 'ذرية محمد', label: 'ذرية محمد' },
   { id: 'ذرية حسين', label: 'ذرية حسين' },
   { id: 'ذرية عبدالله', label: 'ذرية عبدالله' }
@@ -1004,7 +1004,7 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                     onChange={(e) => setFormBranch(e.target.value)}
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm bg-white"
                   >
-                    <option value="سلسلة الأجداد المؤسسين">سلسلة الأجداد المؤسسين</option>
+                    <option value="سلسلة الأجداد المؤسسين">شخصيات عامة</option>
                     <option value="ذرية محمد">ذرية محمد</option>
                     <option value="ذرية حسين">ذرية حسين</option>
                     <option value="ذرية عبدالله">ذرية عبدالله</option>
