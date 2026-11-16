@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ProcessedPerson, FamilyTreeProcessed, SpouseInfo, MotherInfo } from '../types/family';
+import { ProcessedPerson, FamilyTreeProcessed, SpouseInfo, MotherInfo, ArchivalPhoto } from '../types/family';
 import {
   BRANCH_COLORS,
   getArabicInitial,
@@ -52,6 +52,9 @@ interface PersonDetailDrawerProps {
   onUpdateDeathStatus?: (personKey: string, isDeceased: boolean, deathYear: number | null) => void;
   onUpdateBirthDate?: (personKey: string, birthDate: string | null, year: number | null) => void;
   isPrivacyRestricted?: boolean;
+  archivalPhotos?: ArchivalPhoto[];
+  onGoToTree?: (personKey: string) => void;
+  isModalView?: boolean;
 }
 
 export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
@@ -73,6 +76,9 @@ export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
   onUpdateDeathStatus,
   onUpdateBirthDate,
   isPrivacyRestricted = false,
+  archivalPhotos = [],
+  onGoToTree,
+  isModalView = false,
 }) => {
   const person = registry.people.get(personKey);
   const [copied, setCopied] = useState(false);
@@ -278,15 +284,26 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
     setIsEditingNote(false);
   };
 
+  const linkedDocuments = useMemo(() => {
+    if (!archivalPhotos || archivalPhotos.length === 0) return [];
+    return archivalPhotos.filter(
+      doc => Array.isArray(doc.taggedPersonKeys) && doc.taggedPersonKeys.includes(person.key)
+    );
+  }, [archivalPhotos, person.key]);
+
   return (
     <div
-      className="member-modal-scroll flex flex-col w-full h-full max-h-[calc(100vh-80px)] max-h-[calc(100dvh-80px)] bg-white text-slate-800 shadow-2xl overflow-y-auto overscroll-contain touch-pan-y font-['Readex_Pro',sans-serif]"
+      className={
+        isModalView
+          ? "member-modal-scroll flex flex-col w-full flex-1 bg-white text-slate-800 overflow-y-auto overscroll-contain touch-pan-y font-['Readex_Pro',sans-serif]"
+          : "member-modal-scroll flex flex-col w-full h-full max-h-[calc(100vh-80px)] max-h-[calc(100dvh-80px)] bg-white text-slate-800 shadow-2xl overflow-y-auto overscroll-contain touch-pan-y font-['Readex_Pro',sans-serif]"
+      }
       style={{
         overflowY: 'auto',
         WebkitOverflowScrolling: 'touch',
         overscrollBehavior: 'contain',
         touchAction: 'pan-y',
-        maxHeight: 'calc(100dvh - 80px)'
+        ...(isModalView ? {} : { maxHeight: 'calc(100dvh - 80px)' })
       }}
     >
       {/* Top Banner with Branch Color Accent */}
@@ -297,14 +314,16 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
           touchAction: 'pan-y'
         }}
       >
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 left-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-full transition-colors"
-          title="إغلاق البطاقة"
-        >
-          <X className="w-5 h-5" />
-        </button>
+        {/* Close Button (shown in side drawer mode; modal mode has its own sticky top close bar) */}
+        {!isModalView && (
+          <button
+            onClick={onClose}
+            className="absolute top-4 left-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-full transition-colors"
+            title="إغلاق البطاقة"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
 
         {/* Branch / Generation Tag */}
         <div className="flex items-center gap-2 mb-3">
@@ -1012,27 +1031,39 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
           </div>
         </div>
 
-        {/* Action Bar: Certificate and Add Child (Authorized Only) */}
-        <div className={isAuthorized ? 'grid grid-cols-2 gap-2' : 'flex'}>
-          {isAuthorized && (
+        {/* Action Bar: Certificate, Tree Location, and Add Child */}
+        <div className="space-y-2">
+          <div className={isAuthorized ? 'grid grid-cols-2 gap-2' : 'flex'}>
+            {isAuthorized && (
+              <button
+                onClick={() => onAddChild(person.key)}
+                className="flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة ابن / ابنة</span>
+              </button>
+            )}
+
             <button
-              onClick={() => onAddChild(person.key)}
-              className="flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors"
+              onClick={() => onOpenCertificate(person.key)}
+              className={`flex items-center justify-center gap-2 px-3 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer ${
+                isAuthorized ? '' : 'w-full'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>إضافة ابن / ابنة</span>
+              <FileText className="w-4 h-4" />
+              <span>عرض وثيقة النسب</span>
+            </button>
+          </div>
+
+          {onGoToTree && (
+            <button
+              type="button"
+              onClick={() => onGoToTree(person.key)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs sm:text-sm font-bold shadow-2xs transition-all cursor-pointer active:scale-98"
+            >
+              <span>🌲 الانتقال إلى موقعه في الشجرة</span>
             </button>
           )}
-
-          <button
-            onClick={() => onOpenCertificate(person.key)}
-            className={`flex items-center justify-center gap-2 px-3 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors ${
-              isAuthorized ? '' : 'w-full'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            <span>عرض وثيقة النسب</span>
-          </button>
         </div>
 
         {/* Notes & Bio Section */}
@@ -1688,6 +1719,44 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             </div>
           );
         })()}
+
+        {/* Linked Archival Documents & Photos Section (الوثائق المرتبطة) */}
+        <div className="border border-slate-200/90 rounded-2xl p-4 bg-white shadow-2xs space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-emerald-700" />
+              <span>الوثائق والصور المرتبطة ({linkedDocuments.length})</span>
+            </span>
+          </div>
+
+          {linkedDocuments.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {linkedDocuments.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-center gap-3 p-2.5 bg-slate-50 border border-slate-200 rounded-xl"
+                >
+                  {doc.url && (
+                    <img
+                      src={doc.url}
+                      alt={doc.title}
+                      className="w-12 h-12 rounded-lg object-cover border border-slate-200 flex-shrink-0"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <h4 className="text-xs font-bold text-slate-900 truncate">{doc.title}</h4>
+                    {doc.era && <p className="text-[10px] text-emerald-700 font-medium">{doc.era}</p>}
+                    {doc.notes && <p className="text-[10px] text-slate-500 truncate mt-0.5">{doc.notes}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 italic">
+              لا توجد وثائق أو صور أرشيفية مرتبطة بهذا الفرد حالياً.
+            </p>
+          )}
+        </div>
 
         {/* Edit & Delete Actions - Authorized Only */}
         {isAuthorized && (

@@ -1440,7 +1440,85 @@ export function getQuadLineageName(
   return result;
 }
 
-// Intelligent and prioritized search function matching from the first letters
+// Normalizes Arabic text for flexible genealogy search while preserving titles (ملا، الشيخ، أبو، الحاج)
+// and unifying compound prefixes/names whether written with or without spaces.
+export function normalizeForGenealogySearch(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[ًٌٍَُِّْـ]/g, '') // remove tashkeel and tatweel
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/[ىي]/g, 'ي')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/[،,.;:()[\]{}"'«»\-_/\\]/g, ' ')
+    // Unify compound prefixes so spaced and unspaced forms become identical
+    .replace(/(^|\s)عبد\s+/g, '$1عبد')
+    .replace(/(^|\s)(?:ال)?ملا\s+/g, '$1ملا')
+    .replace(/(^|\s)الملا(?=\S)/g, '$1ملا')
+    .replace(/(^|\s)ابو\s+/g, '$1ابو')
+    .replace(/(^|\s)ابا\s+/g, '$1ابا')
+    .replace(/(^|\s)ابي\s+/g, '$1ابي')
+    .replace(/(^|\s)ام\s+/g, '$1ام')
+    .replace(/(^|\s)(?:ال)?شيخ\s+/g, '$1شيخ')
+    .replace(/(^|\s)الشيخ(?=\S)/g, '$1شيخ')
+    .replace(/(^|\s)(?:ال)?حاج\s+/g, '$1حاج')
+    .replace(/(^|\s)الحاج(?=\S)/g, '$1حاج')
+    .replace(/(^|\s)(?:ال)?سيد\s+/g, '$1سيد')
+    .replace(/(^|\s)السيد(?=\S)/g, '$1سيد')
+    .replace(/(^|\s)(?:ال)?شهيد\s+/g, '$1شهيد')
+    .replace(/(^|\s)الشهيد(?=\S)/g, '$1شهيد')
+    .replace(/(^|\s)(?:ال)?مرحوم\s+/g, '$1مرحوم')
+    .replace(/(^|\s)المرحوم(?=\S)/g, '$1مرحوم')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripPatronymicConnectors(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[ًٌٍَُِّْـ]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/(^|\s)(?:بن|ابن|بنت|ابنه|ابنة)(?=\s|$)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenMatchesAncestorEntry(
+  token: string,
+  anc: { full: string; bare: string; compact: string; bareCompact: string }
+): boolean {
+  if (!token) return false;
+  if (
+    anc.full === token ||
+    anc.bare === token ||
+    anc.compact === token ||
+    anc.bareCompact === token
+  ) {
+    return true;
+  }
+  if (
+    anc.full.startsWith(token) ||
+    anc.bare.startsWith(token) ||
+    anc.compact.startsWith(token) ||
+    anc.bareCompact.startsWith(token)
+  ) {
+    return true;
+  }
+  if (anc.full.split(/\s+/).some(w => w.startsWith(token))) {
+    return true;
+  }
+  const tokenNoAl = token.replace(/^ال/, '');
+  if (tokenNoAl.length >= 3) {
+    const ancNoAl = anc.bare.replace(/(^|\s)ال/g, '$1');
+    if (ancNoAl === tokenNoAl || ancNoAl.startsWith(tokenNoAl)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Intelligent and prioritized search function matching from the first letters, compound names, and full lineage chains
 export function searchFamilyMembers(
   query: string,
   people: Map<string, ProcessedPerson>,
@@ -1451,11 +1529,37 @@ export function searchFamilyMembers(
   if (!trimmed) return [];
 
   const excludeFemales = !!options?.excludeFemales;
-  const normQuery = normalizeArabic(trimmed);
-  const queryParts = trimmed
-    .split(/\s+(?:بن|ابن|بنت)\s+/)
-    .map(normalizeArabic)
-    .filter(Boolean);
+  const qNoBin = normalizeForGenealogySearch(stripPatronymicConnectors(trimmed));
+  if (!qNoBin) return [];
+
+  const qCompact = qNoBin.replace(/\s+/g, '');
+  const qTokens = qNoBin.split(/\s+/).filter(Boolean);
+  const kunyaChildQuery =
+    qTokens.length === 1 && qNoBin.startsWith('ابو') && qNoBin.length > 4
+      ? qNoBin.slice(3).trim()
+      : '';
+
+  interface AncestorNormEntry {
+    full: string;
+    bare: string;
+    compact: string;
+    bareCompact: string;
+  }
+
+  // Precompute normalized entry per person for fast lineage traversal
+  const personNormCache = new Map<string, AncestorNormEntry>();
+  people.forEach((p, key) => {
+    const combinedName =
+      p.title && !p.name.includes(p.title) ? `${p.title} ${p.name}` : p.name;
+    const full = normalizeForGenealogySearch(combinedName);
+    const bare = normalizeForGenealogySearch(normalizeArabic(p.name));
+    personNormCache.set(key, {
+      full,
+      bare,
+      compact: full.replace(/\s+/g, ''),
+      bareCompact: bare.replace(/\s+/g, ''),
+    });
+  });
 
   interface ScoredMatch {
     person: ProcessedPerson;
@@ -1468,96 +1572,218 @@ export function searchFamilyMembers(
     if (p.deleted) return;
     if (excludeFemales && p.gender === 'f') return;
 
-    const normName = normalizeArabic(p.name);
+    const selfNorm = personNormCache.get(p.key)!;
     const rawName = p.name;
-    const title = p.title ? normalizeArabic(p.title) : '';
-    const note = p.note ? normalizeArabic(p.note) : '';
+    const titleNorm = p.title ? normalizeForGenealogySearch(p.title) : '';
+    const noteNorm = p.note ? normalizeForGenealogySearch(p.note) : '';
+    const noteCompact = noteNorm.replace(/\s+/g, '');
+
+    // Build full ancestor chain [self, father, grandfather, ..., root]
+    const chain = getLineageChain(p.key, people);
+    const ancList: AncestorNormEntry[] = chain.map(
+      anc => personNormCache.get(anc.key) || {
+        full: normalizeForGenealogySearch(anc.name),
+        bare: normalizeForGenealogySearch(normalizeArabic(anc.name)),
+        compact: normalizeForGenealogySearch(anc.name).replace(/\s+/g, ''),
+        bareCompact: normalizeForGenealogySearch(normalizeArabic(anc.name)).replace(/\s+/g, ''),
+      }
+    );
+
+    const lineageFullNoBin = ancList.map(a => a.full).join(' ');
+    const lineageBareNoBin = ancList.map(a => a.bare).join(' ');
+    const lineageFullCompact = ancList.map(a => a.compact).join('');
+    const lineageBareCompact = ancList.map(a => a.bareCompact).join('');
 
     let score = 0;
 
-    // 1. Exact name match
-    if (normName === normQuery) {
+    // 1. Single-person name matching (with or without spaces / titles)
+    if (selfNorm.full === qNoBin) {
+      score += 1400;
+    } else if (selfNorm.compact === qCompact && qCompact.length >= 2) {
+      score += 1350;
+    } else if (selfNorm.bare === qNoBin) {
+      score += 1050;
+    } else if (selfNorm.bareCompact === qCompact && qCompact.length >= 2) {
       score += 1000;
-    }
-    // 2. Starts with query (matches immediately upon typing initial letters)
-    else if (normName.startsWith(normQuery) || rawName.startsWith(trimmed)) {
-      score += 500;
-    }
-    // 3. Word inside name starts with query (e.g. "عبد الحسين" matches "حسين")
-    else if (normName.split(/\s+/).some(w => w.startsWith(normQuery))) {
-      score += 300;
-    }
-    // 4. Name contains query
-    else if (normName.includes(normQuery) || rawName.includes(trimmed)) {
-      score += 150;
-    }
-
-    // Check 4-generation lineage match
-    const quad = getQuadLineageName(p.key, people, 4);
-    const normQuad = normalizeArabic(quad);
-    if (normQuad.startsWith(normQuery) || quad.startsWith(trimmed)) {
-      score += 450;
-    } else if (normQuad.includes(normQuery)) {
+    } else if (selfNorm.full.startsWith(qNoBin) || rawName.startsWith(trimmed)) {
+      score += 650;
+    } else if (selfNorm.compact.startsWith(qCompact) && qCompact.length >= 2) {
+      score += 600;
+    } else if (selfNorm.bare.startsWith(qNoBin)) {
+      score += 550;
+    } else if (selfNorm.full.split(/\s+/).some(w => w.startsWith(qNoBin))) {
+      score += 350;
+    } else if (
+      selfNorm.full.includes(qNoBin) ||
+      (qCompact.length >= 3 && selfNorm.compact.includes(qCompact)) ||
+      rawName.includes(trimmed)
+    ) {
       score += 200;
     }
 
-    // Check multi-part patronymic (e.g. "أحمد بن علي")
-    if (queryParts.length > 1) {
-      let cur: ProcessedPerson | undefined = p;
-      let chainMatchCount = 0;
+    // 2. Full Lineage Chain matching (ignoring 'بن / ابن' and missing spaces)
+    if (lineageFullNoBin === qNoBin) {
+      score += 1600;
+    } else if (lineageFullNoBin.startsWith(qNoBin + ' ')) {
+      score += 1250;
+    } else if (lineageFullNoBin.startsWith(qNoBin)) {
+      score += 1100;
+    } else if (lineageBareNoBin.startsWith(qNoBin + ' ')) {
+      score += 1050;
+    } else if (lineageBareNoBin.startsWith(qNoBin)) {
+      score += 920;
+    } else if (qCompact.length >= 3 && lineageFullCompact.startsWith(qCompact)) {
+      score += 880;
+    } else if (qCompact.length >= 3 && lineageBareCompact.startsWith(qCompact)) {
+      score += 800;
+    }
 
-      for (let i = 0; i < queryParts.length; i++) {
-        if (!cur) break;
-        const curNorm = normalizeArabic(cur.name);
-        if (curNorm.includes(queryParts[i])) {
-          chainMatchCount++;
+    // 3. Multi-token ordered patronymic chain matching (e.g. "حسين حسين", "حسين بن حسين", "ملا حسين محمد")
+    if (qTokens.length > 1) {
+      // 3a. Match starting from the person himself (ancList[0])
+      if (tokenMatchesAncestorEntry(qTokens[0], ancList[0])) {
+        let ancIdx = 0;
+        let matchedCount = 1;
+        let totalGaps = 0;
+        const anc0Words = ancList[0].full.split(/\s+/);
+        let wordIdxInAnc = anc0Words.findIndex(w => w.startsWith(qTokens[0]));
+
+        for (let ti = 1; ti < qTokens.length; ti++) {
+          const tok = qTokens[ti];
+          const curAncWords = ancList[ancIdx].full.split(/\s+/);
+          const nextWordIdx = curAncWords.findIndex((w, idx) => idx > wordIdxInAnc && w.startsWith(tok));
+          if (nextWordIdx !== -1) {
+            wordIdxInAnc = nextWordIdx;
+            matchedCount++;
+            continue;
+          }
+
+          let foundAnc = -1;
+          for (let ai = ancIdx + 1; ai < ancList.length; ai++) {
+            if (tokenMatchesAncestorEntry(tok, ancList[ai])) {
+              foundAnc = ai;
+              break;
+            }
+          }
+
+          if (foundAnc !== -1) {
+            totalGaps += foundAnc - (ancIdx + 1);
+            ancIdx = foundAnc;
+            wordIdxInAnc = ancList[ancIdx].full.split(/\s+/).findIndex(w => w.startsWith(tok));
+            matchedCount++;
+          } else {
+            break;
+          }
         }
-        cur = cur.parentKey ? people.get(cur.parentKey) : undefined;
-      }
 
-      if (chainMatchCount === queryParts.length) {
-        score += 800; // Complete patronymic match
-      } else if (chainMatchCount > 1) {
-        score += chainMatchCount * 120;
+        if (matchedCount === qTokens.length) {
+          const gapPenalty = Math.min(totalGaps * 120, 450);
+          score += Math.max(950 - gapPenalty, 450);
+          if (ancList[0].full === qTokens[0] || ancList[0].bare === qTokens[0]) {
+            score += 120;
+          }
+        }
+      }
+      // 3b. Match starting from the direct father (ancList[1]) so children of the queried lineage also appear below
+      else if (ancList.length > 1 && tokenMatchesAncestorEntry(qTokens[0], ancList[1])) {
+        let ancIdx = 1;
+        let matchedCount = 1;
+        let totalGaps = 0;
+        const anc1Words = ancList[1].full.split(/\s+/);
+        let wordIdxInAnc = anc1Words.findIndex(w => w.startsWith(qTokens[0]));
+
+        for (let ti = 1; ti < qTokens.length; ti++) {
+          const tok = qTokens[ti];
+          const curAncWords = ancList[ancIdx].full.split(/\s+/);
+          const nextWordIdx = curAncWords.findIndex((w, idx) => idx > wordIdxInAnc && w.startsWith(tok));
+          if (nextWordIdx !== -1) {
+            wordIdxInAnc = nextWordIdx;
+            matchedCount++;
+            continue;
+          }
+
+          let foundAnc = -1;
+          for (let ai = ancIdx + 1; ai < ancList.length; ai++) {
+            if (tokenMatchesAncestorEntry(tok, ancList[ai])) {
+              foundAnc = ai;
+              break;
+            }
+          }
+
+          if (foundAnc !== -1) {
+            totalGaps += foundAnc - (ancIdx + 1);
+            ancIdx = foundAnc;
+            wordIdxInAnc = ancList[ancIdx].full.split(/\s+/).findIndex(w => w.startsWith(tok));
+            matchedCount++;
+          } else {
+            break;
+          }
+        }
+
+        if (matchedCount === qTokens.length && totalGaps <= 1) {
+          score += Math.max(260 - totalGaps * 80, 120);
+        }
       }
     } else {
-      // Single query: also check parent name
-      if (p.parentKey) {
-        const parent = people.get(p.parentKey);
-        if (parent) {
-          const parentNorm = normalizeArabic(parent.name);
-          if (parentNorm.startsWith(normQuery)) {
-            score += 80;
-          } else if (parentNorm.includes(normQuery)) {
-            score += 40;
-          }
+      // Single-token query: also check parent and 4-gen lineage
+      if (ancList.length > 1) {
+        const parentNorm = ancList[1];
+        if (parentNorm.full === qNoBin || parentNorm.compact === qCompact) {
+          score += 320;
+        } else if (parentNorm.full.startsWith(qNoBin) || parentNorm.bare.startsWith(qNoBin)) {
+          score += 120;
+        } else if (parentNorm.full.includes(qNoBin)) {
+          score += 60;
+        }
+      }
+      if (ancList.length > 2) {
+        const grandNorm = ancList[2];
+        if (grandNorm.full === qNoBin || grandNorm.compact === qCompact) {
+          score += 180;
+        } else if (grandNorm.full.startsWith(qNoBin)) {
+          score += 50;
         }
       }
     }
 
-    // Matching spouse name (الزوج / الزوجة) — disabled in public visitor privacy mode
+    // 4. Kunya / Nickname matching (e.g. "ابو احمد / أبو أحمد") in title, notes, or eldest son
+    if (titleNorm && (titleNorm.includes(qNoBin) || titleNorm.replace(/\s+/g, '').includes(qCompact))) {
+      score += 450;
+    }
+    if (noteNorm && (noteNorm.includes(qNoBin) || (qCompact.length >= 3 && noteCompact.includes(qCompact)))) {
+      score += 280;
+    }
+    if (kunyaChildQuery && p.gender === 'm' && p.childrenKeys.length > 0) {
+      const sonsNorm = p.childrenKeys
+        .map(ck => people.get(ck))
+        .filter((c): c is ProcessedPerson => !!c && !c.deleted && c.gender === 'm')
+        .map(c => personNormCache.get(c.key));
+      if (sonsNorm.length > 0 && sonsNorm[0] && (sonsNorm[0].full === kunyaChildQuery || sonsNorm[0].bare === kunyaChildQuery)) {
+        score += 340;
+      } else if (sonsNorm.some(s => s && (s.full === kunyaChildQuery || s.bare === kunyaChildQuery))) {
+        score += 150;
+      }
+    }
+
+    // 5. Matching spouse name (الزوج / الزوجة) — disabled in public visitor privacy mode
     if (!excludeFemales && p.spouses && p.spouses.length > 0) {
       for (const sp of p.spouses) {
         if (!sp.name) continue;
-        const normSp = normalizeArabic(sp.name);
-        if (normSp.includes(normQuery)) {
+        const normSp = normalizeForGenealogySearch(stripPatronymicConnectors(sp.name));
+        if (normSp.includes(qNoBin) || (qCompact.length >= 3 && normSp.replace(/\s+/g, '').includes(qCompact))) {
           score += 180;
           break;
         }
       }
     }
 
-    // Matching mother name (نسب الأم) — disabled in public visitor privacy mode
+    // 6. Matching mother name (نسب الأم) — disabled in public visitor privacy mode
     if (!excludeFemales && p.mother && p.mother.name) {
-      const normMom = normalizeArabic(p.mother.name);
-      if (normMom.includes(normQuery)) {
+      const normMom = normalizeForGenealogySearch(stripPatronymicConnectors(p.mother.name));
+      if (normMom.includes(qNoBin) || (qCompact.length >= 3 && normMom.replace(/\s+/g, '').includes(qCompact))) {
         score += 160;
       }
     }
-
-    // Bonus for title or notes
-    if (title && title.includes(normQuery)) score += 30;
-    if (note && note.includes(normQuery)) score += 20;
 
     if (score > 0) {
       results.push({ person: p, score });

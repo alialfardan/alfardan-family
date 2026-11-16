@@ -1936,6 +1936,15 @@ export default function App() {
               onUnlockFamilyMode={handleUnlockFamilyMode}
               onLockFamilyMode={handleLockFamilyMode}
               onOpenContact={() => setIsContactModalOpen(true)}
+              onUpdateNote={handleUpdateNote}
+              onChangePhoto={handleChangePhoto}
+              onSaveSpouse={handleSaveSpouse}
+              onDeleteSpouse={handleDeleteSpouse}
+              onSaveMother={handleSaveMother}
+              onDeleteMother={handleDeleteMother}
+              onUpdateDeathStatus={handleUpdateDeathStatus}
+              onUpdateBirthDate={handleUpdateBirthDate}
+              archivalPhotos={familyState.archivalPhotos || []}
             />
           </div>
         )}
@@ -2000,6 +2009,7 @@ export default function App() {
                   onDeleteMother={handleDeleteMother}
                   onUpdateDeathStatus={handleUpdateDeathStatus}
                   onUpdateBirthDate={handleUpdateBirthDate}
+                  archivalPhotos={familyState.archivalPhotos || []}
                 />
               </div>
             )}

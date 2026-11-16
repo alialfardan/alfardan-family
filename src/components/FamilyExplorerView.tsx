@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
-import { BRANCH_COLORS, getArabicInitial, getLineageChain, formatLineageString, normalizeArabic, getQuadLineageName } from '../data/treeManager';
+import { createPortal } from 'react-dom';
+import { FamilyTreeProcessed, ProcessedPerson, SpouseInfo, MotherInfo, ArchivalPhoto } from '../types/family';
+import { BRANCH_COLORS, getArabicInitial, getLineageChain, formatLineageString, normalizeArabic, getQuadLineageName, searchFamilyMembers } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
+import { PersonDetailDrawer } from './PersonDetailDrawer';
 import {
   ChevronLeft,
   ChevronRight,
@@ -51,6 +53,15 @@ interface FamilyExplorerViewProps {
   onUnlockFamilyMode?: () => void;
   onLockFamilyMode?: () => void;
   onOpenContact?: () => void;
+  onUpdateNote?: (personKey: string, note: string) => void;
+  onChangePhoto?: (personKey: string) => void;
+  onSaveSpouse?: (personKey: string, spouse: SpouseInfo) => void;
+  onDeleteSpouse?: (personKey: string, spouseId: string) => void;
+  onSaveMother?: (personKey: string, mother: MotherInfo) => void;
+  onDeleteMother?: (personKey: string) => void;
+  onUpdateDeathStatus?: (personKey: string, isDeceased: boolean, deathYear: number | null) => void;
+  onUpdateBirthDate?: (personKey: string, birthDate: string | null, year: number | null) => void;
+  archivalPhotos?: ArchivalPhoto[];
 }
 
 const PROTECTED_TRUNK_KEYS = new Set(['ot0', 'ot1', 'ot2', 'am_mvzm8u6pyafp', 'ot3', 'oF']);
@@ -73,10 +84,21 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
   onUnlockFamilyMode,
   onLockFamilyMode,
   onOpenContact,
+  onUpdateNote,
+  onChangePhoto,
+  onSaveSpouse,
+  onDeleteSpouse,
+  onSaveMother,
+  onDeleteMother,
+  onUpdateDeathStatus,
+  onUpdateBirthDate,
+  archivalPhotos = [],
 }) => {
   // Navigation mode: 'home' or 'person'
   const [isHome, setIsHome] = useState<boolean>(() => currentPersonKey === 'home');
   const [copied, setCopied] = useState(false);
+  // Full Member Card Modal State («🪪 البطاقة الشاملة»)
+  const [fullCardPersonKey, setFullCardPersonKey] = useState<string | null>(null);
   // Hero Search State
   const [heroSearchQuery, setHeroSearchQuery] = useState('');
   const [isHeroSearchOpen, setIsHeroSearchOpen] = useState(false);
@@ -111,20 +133,9 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
   }, []);
 
   const heroSearchResults = useMemo(() => {
-    const q = normalizeArabic(heroSearchQuery.trim());
+    const q = heroSearchQuery.trim();
     if (!q) return [];
-    const results: ProcessedPerson[] = [];
-    for (const p of registry.people.values()) {
-      if (p.deleted) continue;
-      if (isPrivacyRestricted && p.gender === 'f') continue;
-      const quad = normalizeArabic(getQuadLineageName(p.key, registry.people, 4));
-      const normName = normalizeArabic(p.name);
-      if (normName.includes(q) || quad.includes(q)) {
-        results.push(p);
-        if (results.length >= 10) break;
-      }
-    }
-    return results;
+    return searchFamilyMembers(q, registry.people, 20, { excludeFemales: isPrivacyRestricted });
   }, [heroSearchQuery, registry.people, isPrivacyRestricted]);
 
   // Active person
@@ -371,38 +382,57 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               </span>
             </div>
 
-            {/* Centered Family Privacy Mode Button («أنا من العائلة 🔒» / «أنا من العائلة 🔓 - وضع العائلة مفعل»)
+            {/* Centered Family Privacy Mode Guidance & Button («أنا من العائلة 🔒» / «أنا من العائلة 🔓 - وضع العائلة مفعل»)
                 Positioned directly under the Registered Members counter and directly above the Search box */}
             {privacyModeEnabled && (
-              <div className="pt-2 pb-1 flex justify-center px-2">
-                {isFamilyMember ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFamilyPassError('');
-                      setIsFamilyPassModalOpen(true);
-                    }}
-                    className="w-full sm:w-auto max-w-md inline-flex items-center justify-center gap-2.5 px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800 hover:from-emerald-700 hover:via-emerald-800 hover:to-emerald-900 text-white border-2 border-emerald-300/90 ring-4 ring-emerald-500/20 rounded-2xl text-sm sm:text-base font-extrabold font-['Alexandria'] shadow-lg shadow-emerald-700/25 hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
-                    title="وضع العائلة مفعل حالياً — اضغط لقفل الوضع والعودة لوضع الزوار"
-                  >
-                    <Unlock className="w-5 h-5 text-emerald-100 flex-shrink-0" />
-                    <span>أنا من العائلة 🔓 - وضع العائلة مفعل</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFamilyPassError('');
-                      setFamilyPassInput('');
-                      setIsFamilyPassModalOpen(true);
-                    }}
-                    className="w-full sm:w-auto max-w-xs sm:max-w-md inline-flex items-center justify-center gap-2.5 px-7 sm:px-9 py-3 sm:py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:via-amber-700 hover:to-amber-800 text-white border-2 border-amber-300/90 ring-4 ring-amber-400/25 rounded-2xl text-sm sm:text-base font-extrabold font-['Alexandria'] shadow-lg shadow-amber-600/25 hover:shadow-xl hover:shadow-amber-600/35 transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
-                    title="أدخل الرمز السري لأفراد العائلة لعرض الشجرة العائلية الكاملة"
-                  >
-                    <Lock className="w-5 h-5 text-amber-100 flex-shrink-0" />
-                    <span>أنا من العائلة 🔒</span>
-                  </button>
+              <div className="pt-2 pb-1 space-y-3 px-2">
+                {!isFamilyMember && (
+                  <div className="max-w-xl mx-auto bg-white/85 backdrop-blur-xs border border-amber-200/80 rounded-2xl px-4 py-3 shadow-2xs text-center">
+                    <p className="text-xs sm:text-sm text-slate-700 leading-relaxed font-medium">
+                      <span className="font-bold text-amber-900">لأفراد عائلة الفردان:</span>{' '}
+                      لإظهار كافة التفاصيل (الأمهات، الزوجات، والبنات)، اضغط على زر &quot;أنا من العائلة&quot; أدناه وأدخل الرمز السري. (للحصول على الرمز السري يُرجى التواصل عبر الواتساب في{' '}
+                      <button
+                        type="button"
+                        onClick={() => onOpenContact?.()}
+                        className="font-bold text-emerald-800 hover:text-emerald-950 underline decoration-emerald-600/80 underline-offset-4 transition-colors cursor-pointer"
+                      >
+                        قسم التواصل
+                      </button>
+                      ).
+                    </p>
+                  </div>
                 )}
+
+                <div className="flex justify-center">
+                  {isFamilyMember ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFamilyPassError('');
+                        setIsFamilyPassModalOpen(true);
+                      }}
+                      className="w-full sm:w-auto max-w-md inline-flex items-center justify-center gap-2.5 px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-emerald-800 hover:from-emerald-700 hover:via-emerald-800 hover:to-emerald-900 text-white border-2 border-emerald-300/90 ring-4 ring-emerald-500/20 rounded-2xl text-sm sm:text-base font-extrabold font-['Alexandria'] shadow-lg shadow-emerald-700/25 hover:shadow-xl transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+                      title="وضع العائلة مفعل حالياً — اضغط لقفل الوضع والعودة لوضع الزوار"
+                    >
+                      <Unlock className="w-5 h-5 text-emerald-100 flex-shrink-0" />
+                      <span>أنا من العائلة 🔓 - وضع العائلة مفعل</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFamilyPassError('');
+                        setFamilyPassInput('');
+                        setIsFamilyPassModalOpen(true);
+                      }}
+                      className="w-full sm:w-auto max-w-xs sm:max-w-md inline-flex items-center justify-center gap-2.5 px-7 sm:px-9 py-3 sm:py-3.5 bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-600 hover:via-amber-700 hover:to-amber-800 text-white border-2 border-amber-300/90 ring-4 ring-amber-400/25 rounded-2xl text-sm sm:text-base font-extrabold font-['Alexandria'] shadow-lg shadow-amber-600/25 hover:shadow-xl hover:shadow-amber-600/35 transition-all transform hover:-translate-y-0.5 active:scale-95 cursor-pointer"
+                      title="أدخل الرمز السري لأفراد العائلة لعرض الشجرة العائلية الكاملة"
+                    >
+                      <Lock className="w-5 h-5 text-amber-100 flex-shrink-0" />
+                      <span>أنا من العائلة 🔒</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -905,25 +935,49 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
             </div>
 
             {/* Quick Action Buttons */}
-            <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
-              {isAuthorized && (
-                <button
-                  onClick={() => onOpenAddModal(currentPerson.key)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>إضافة ابن / ابنة</span>
-                </button>
-              )}
+            <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
+              <button
+                type="button"
+                onClick={() => setFullCardPersonKey(currentPerson.key)}
+                className="bg-emerald-700 hover:bg-emerald-800 text-white shadow-sm rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                title="فتح البطاقة الشاملة بكافة تفاصيل الفرد (الوالدين، الزوجات، الأبناء، البنات، الإخوة، والوثائق)"
+              >
+                <span>🪪 البطاقة الشاملة</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (onSelectPerson) {
+                    onSelectPerson(currentPerson.key);
+                  } else {
+                    onSwitchToFullTree(currentPerson.key);
+                  }
+                }}
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5 active:scale-95"
+                title="الانتقال مباشرة إلى قسم الشجرة مع التركيز التلقائي على موقع هذا الفرد"
+              >
+                <span>🌲 موقعه في الشجرة</span>
+              </button>
 
               <button
                 onClick={() => onOpenCertificate(currentPerson.key)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors"
+                className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
                 title="إصدار وثيقة النسب"
               >
                 <Award className="w-4 h-4" />
                 <span className="hidden sm:inline">وثيقة النسب</span>
               </button>
+
+              {isAuthorized && (
+                <button
+                  onClick={() => onOpenAddModal(currentPerson.key)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>إضافة ابن / ابنة</span>
+                </button>
+              )}
 
               {isAuthorized && (
                 <>
@@ -1272,6 +1326,92 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
           <ArrowUp className="w-4 h-4 text-emerald-300" />
           <span>العودة للأعلى ↑</span>
         </button>
+      )}
+
+      {/* Full Member Comprehensive Card Modal («🪪 البطاقة الشاملة») via React Portal */}
+      {fullCardPersonKey && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in font-['Readex_Pro',sans-serif]"
+          onClick={() => setFullCardPersonKey(null)}
+        >
+          <div
+            className="w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-2xl bg-white sm:rounded-3xl shadow-2xl border-0 sm:border sm:border-slate-200 overflow-hidden flex flex-col relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Fixed Top Header Bar with Prominent Close Button (✕ إغلاق) */}
+            <div className="flex-shrink-0 sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-base sm:text-lg">🪪</span>
+                <h3 className="text-sm sm:text-base font-extrabold font-['Alexandria'] text-slate-900 truncate">
+                  البطاقة الشاملة — {registry.people.get(fullCardPersonKey)?.name || ''}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setFullCardPersonKey(null)}
+                className="inline-flex items-center gap-2 pl-3.5 pr-2 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-800 hover:text-white border-2 border-rose-200 hover:border-rose-600 rounded-full font-extrabold text-xs sm:text-sm shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95 group flex-shrink-0"
+                title="إغلاق البطاقة الشاملة والعودة لتصفح الفرع"
+              >
+                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center shadow-xs transition-colors text-base sm:text-lg font-black leading-none">
+                  ✕
+                </span>
+                <span>إغلاق</span>
+              </button>
+            </div>
+
+            {/* Comprehensive Member Details Body (Matching Tree Section Card) */}
+            <PersonDetailDrawer
+              personKey={fullCardPersonKey}
+              registry={registry}
+              isModalView={true}
+              onSelectPerson={(key) => {
+                setFullCardPersonKey(key);
+                handleOpenPerson(key);
+              }}
+              onClose={() => setFullCardPersonKey(null)}
+              onGoToTree={(key) => {
+                setFullCardPersonKey(null);
+                if (onSelectPerson) {
+                  onSelectPerson(key);
+                } else {
+                  onSwitchToFullTree(key);
+                }
+              }}
+              onAddChild={(parentKey) => {
+                setFullCardPersonKey(null);
+                onOpenAddModal(parentKey);
+              }}
+              onEditPerson={(personKey) => {
+                setFullCardPersonKey(null);
+                onOpenEditModal(personKey);
+              }}
+              onDeletePerson={(personKey) => {
+                setFullCardPersonKey(null);
+                onDeletePerson?.(personKey);
+              }}
+              onUpdateNote={(personKey, note) => onUpdateNote?.(personKey, note)}
+              onChangePhoto={(personKey) => {
+                setFullCardPersonKey(null);
+                onChangePhoto?.(personKey);
+              }}
+              onOpenCertificate={(personKey) => {
+                setFullCardPersonKey(null);
+                onOpenCertificate(personKey);
+              }}
+              isAuthorized={isAuthorized}
+              isPrivacyRestricted={isPrivacyRestricted}
+              onSaveSpouse={onSaveSpouse}
+              onDeleteSpouse={onDeleteSpouse}
+              onSaveMother={onSaveMother}
+              onDeleteMother={onDeleteMother}
+              onUpdateDeathStatus={onUpdateDeathStatus}
+              onUpdateBirthDate={onUpdateBirthDate}
+              archivalPhotos={archivalPhotos}
+            />
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
