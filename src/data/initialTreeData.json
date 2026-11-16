@@ -11714,6 +11714,44 @@
           "name": "",
           "isFromFamily": false
         }
+      },
+      {
+        "id": "m_mwjhkpmhu6wx",
+        "name": "زهرة",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "o218",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1794847022009,
+        "del": false,
+        "motherInfo": {
+          "name": "بدرية",
+          "isFromFamily": true,
+          "personKey": "am_mvu6x1bdcy83",
+          "familyOrigin": "عائلة الفردان"
+        }
+      },
+      {
+        "id": "m_mwjhkyjpwvfi",
+        "name": "زينب",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "o218",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1794847033573,
+        "del": false,
+        "motherInfo": {
+          "name": "بدرية",
+          "isFromFamily": true,
+          "personKey": "am_mvu6x1bdcy83",
+          "familyOrigin": "عائلة الفردان"
+        }
       }
     ],
     "photos": {
@@ -17033,6 +17071,18 @@
         "isFromFamily": false,
         "name": "من خارج العائلة",
         "familyOrigin": "من خارج العائلة"
+      },
+      "am_mwjhkpmhu6wx": {
+        "name": "بدرية",
+        "isFromFamily": true,
+        "personKey": "am_mvu6x1bdcy83",
+        "familyOrigin": "عائلة الفردان"
+      },
+      "am_mwjhkyjpwvfi": {
+        "name": "بدرية",
+        "isFromFamily": true,
+        "personKey": "am_mvu6x1bdcy83",
+        "familyOrigin": "عائلة الفردان"
       }
     },
     "contactInfo": {
@@ -17046,6 +17096,6 @@
       "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
     },
     "privacyModeEnabled": true,
-    "updatedAt": 1794845251604
+    "updatedAt": 1794847066532
   }
 }
