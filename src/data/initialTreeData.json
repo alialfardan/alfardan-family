@@ -11947,10 +11947,10 @@
       "o626": "/avatars/o626.jpg?v=1794829363409",
       "o624": "/avatars/o624.jpg?v=1794829588354",
       "o627": "/avatars/o627.jpg?v=1794829619071",
-      "o560": "/avatars/o560.jpg?v=1794831278666",
       "o629": "/avatars/o629.jpg?v=1794831341266",
       "o537": "/avatars/o537.jpg?v=1794832144662",
-      "o492": "/avatars/o492.jpg?v=1794832172897"
+      "o492": "/avatars/o492.jpg?v=1794832172897",
+      "o560": "/avatars/o560.jpg?v=1794831278666"
     },
     "over": {
       "o264": {
@@ -15304,6 +15304,24 @@
           "id": "sp_mwgqulmwhq64",
           "isFromFamily": false
         }
+      ],
+      "o22": [
+        {
+          "id": "sp_mwjggs2wu9pa",
+          "name": "فريدة",
+          "isFromFamily": true,
+          "personKey": "adau_o3_fareeda",
+          "familyOrigin": "عائلة الفردان"
+        }
+      ],
+      "adau_o3_fareeda": [
+        {
+          "id": "recip_o22_adau_o3_fareeda",
+          "name": "حسين",
+          "isFromFamily": true,
+          "personKey": "o22",
+          "familyOrigin": "عائلة الفردان"
+        }
       ]
     },
     "mothers": {
@@ -17028,6 +17046,6 @@
       "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
     },
     "privacyModeEnabled": true,
-    "updatedAt": 1794832372011
+    "updatedAt": 1794845251604
   }
 }
