@@ -763,18 +763,18 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
             createPortal(
               <div
                 dir="rtl"
-                className="doc-viewer-backdrop fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in font-['Readex_Pro',sans-serif]"
+                className="doc-viewer-backdrop fixed inset-0 z-[999999] flex items-end sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-4 p-0 sm:p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in font-['Readex_Pro',sans-serif]"
                 onClick={() => {
                   setIsFullscreen(false);
                   resetDocTransform();
                 }}
               >
                 <div
-                  className="doc-viewer-modal bg-white rounded-3xl max-w-6xl w-full h-[94dvh] max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col"
+                  className="doc-viewer-modal bg-white rounded-t-3xl sm:rounded-3xl max-w-6xl w-full h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:h-[94dvh] max-h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col mt-12 sm:mt-0"
                   onClick={e => e.stopPropagation()}
                 >
                   {/* Sticky Top Header: Right = Counter, Center = Document Title, Left = Large Clear Close Button (✕) */}
-                  <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 pb-3 pt-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+                  <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 py-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
                     {/* Right: Counter */}
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 font-mono tabular-nums">
@@ -787,7 +787,7 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       مخطوطة ووثيقة شجرة نسب عائلة الفردان الأصلية
                     </h3>
 
-                    {/* Left: Close Button (✕) */}
+                    {/* Left: Close Button (✕ إغلاق) */}
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
@@ -796,10 +796,10 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                           resetDocTransform();
                         }}
                         aria-label="إغلاق نافذة الوثيقة"
-                        className="flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-3 py-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer shadow-2xs"
+                        className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
                       >
                         <span className="text-base leading-none font-black">✕</span>
-                        <span className="hidden sm:inline">إغلاق</span>
+                        <span>إغلاق</span>
                       </button>
                     </div>
                   </div>
@@ -1322,18 +1322,18 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
         createPortal(
           <div
             dir="rtl"
-            className="doc-viewer-backdrop fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in font-['Readex_Pro',sans-serif]"
+            className="doc-viewer-backdrop fixed inset-0 z-[999999] flex items-end sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-4 p-0 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in font-['Readex_Pro',sans-serif]"
             onClick={() => {
               setSelectedPhotoIndex(null);
               resetLightboxTransform();
             }}
           >
             <div
-              className="doc-viewer-modal bg-white rounded-3xl max-w-5xl w-full max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col font-['Readex_Pro',sans-serif]"
+              className="doc-viewer-modal bg-white rounded-t-3xl sm:rounded-3xl max-w-5xl w-full max-h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col font-['Readex_Pro',sans-serif] mt-12 sm:mt-0"
               onClick={e => e.stopPropagation()}
             >
               {/* Sticky Modal Header: Right = Counter, Center = Document Title, Left = Large Clear Close Button (✕) */}
-              <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 pb-3 pt-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+              <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 py-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
                 {/* Right: Image Counter */}
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 font-mono tabular-nums">
@@ -1346,13 +1346,13 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                   {currentPhoto.title}
                 </h3>
 
-                {/* Left: Admin Edit + Large Clear Close Button (✕) */}
+                {/* Left: Admin Edit + Large Clear Close Button (✕ إغلاق) */}
                 <div className="flex items-center gap-2 shrink-0">
                   {isAuthorized && onOpenEditDocumentModal && (
                     <button
                       type="button"
                       onClick={() => onOpenEditDocumentModal(currentPhoto)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                      className="flex items-center gap-1 min-h-[44px] px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-full text-xs font-bold transition-colors cursor-pointer"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                       <span className="hidden sm:inline">تعديل</span>
@@ -1366,10 +1366,10 @@ export const DocumentArchiveView: React.FC<DocumentArchiveViewProps> = ({
                       resetLightboxTransform();
                     }}
                     aria-label="إغلاق الوثيقة"
-                    className="flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-3 py-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer shadow-2xs"
+                    className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
                   >
                     <span className="text-base leading-none font-black">✕</span>
-                    <span className="hidden sm:inline">إغلاق</span>
+                    <span>إغلاق</span>
                   </button>
                 </div>
               </div>

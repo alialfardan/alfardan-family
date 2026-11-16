@@ -1331,11 +1331,11 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
       {/* Full Member Comprehensive Card Modal («🪪 البطاقة الشاملة») via React Portal */}
       {fullCardPersonKey && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[99999] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 animate-in fade-in font-['Readex_Pro',sans-serif]"
+          className="fixed inset-0 z-[99999] bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-4 p-0 sm:p-4 md:p-6 animate-in fade-in font-['Readex_Pro',sans-serif]"
           onClick={() => setFullCardPersonKey(null)}
         >
           <div
-            className="w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-2xl bg-white sm:rounded-3xl shadow-2xl border-0 sm:border sm:border-slate-200 overflow-hidden flex flex-col relative"
+            className="w-full h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:h-auto sm:max-h-[92vh] sm:max-w-2xl bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border-t sm:border border-slate-200 overflow-hidden flex flex-col relative mt-12 sm:mt-0"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Fixed Top Header Bar with Prominent Close Button (✕ إغلاق) */}
@@ -1350,12 +1350,11 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               <button
                 type="button"
                 onClick={() => setFullCardPersonKey(null)}
-                className="inline-flex items-center gap-2 pl-3.5 pr-2 py-1.5 bg-rose-50 hover:bg-rose-600 text-rose-800 hover:text-white border-2 border-rose-200 hover:border-rose-600 rounded-full font-extrabold text-xs sm:text-sm shadow-sm hover:shadow-md transition-all cursor-pointer active:scale-95 group flex-shrink-0"
+                aria-label="إغلاق البطاقة الشاملة"
+                className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 flex-shrink-0"
                 title="إغلاق البطاقة الشاملة والعودة لتصفح الفرع"
               >
-                <span className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600 group-hover:bg-white text-white group-hover:text-rose-600 flex items-center justify-center shadow-xs transition-colors text-base sm:text-lg font-black leading-none">
-                  ✕
-                </span>
+                <span className="text-base leading-none font-black">✕</span>
                 <span>إغلاق</span>
               </button>
             </div>

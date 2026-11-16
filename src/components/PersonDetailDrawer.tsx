@@ -317,11 +317,14 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
         {/* Close Button (shown in side drawer mode; modal mode has its own sticky top close bar) */}
         {!isModalView && (
           <button
+            type="button"
             onClick={onClose}
-            className="absolute top-4 left-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-black/5 rounded-full transition-colors"
+            aria-label="إغلاق البطاقة"
+            className="absolute top-3 left-3 min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer z-20"
             title="إغلاق البطاقة"
           >
-            <X className="w-5 h-5" />
+            <span className="text-base leading-none font-black">✕</span>
+            <span>إغلاق</span>
           </button>
         )}
 

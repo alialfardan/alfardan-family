@@ -265,22 +265,22 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in select-none"
+      className="fixed inset-0 z-[999999] flex items-end sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-6 p-0 sm:p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in select-none"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-3xl max-w-3xl w-full my-auto shadow-2xl border border-slate-200 text-slate-800 font-['Readex_Pro',sans-serif] overflow-hidden flex flex-col max-h-[94dvh] animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-t-3xl sm:rounded-3xl max-w-3xl w-full mt-12 sm:my-auto shadow-2xl border border-slate-200 text-slate-800 font-['Readex_Pro',sans-serif] overflow-hidden flex flex-col max-h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:max-h-[94dvh] animate-in zoom-in-95 duration-200"
         onClick={e => e.stopPropagation()}
       >
         {/* Header Bar */}
-        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-50 via-white to-emerald-50/40">
+        <div className="px-4 sm:px-6 py-3.5 border-b border-slate-100 flex items-center justify-between gap-3 bg-gradient-to-r from-slate-50 via-white to-emerald-50/40">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-2xl bg-emerald-800 text-white flex items-center justify-center shadow-md flex-shrink-0">
               <User className="w-5 h-5 text-amber-300" />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-base sm:text-lg font-bold font-['Alexandria'] text-slate-900 leading-tight truncate">
+                <h3 className="text-sm sm:text-lg font-bold font-['Alexandria'] text-slate-900 leading-tight truncate">
                   صورة «{personName}»
                 </h3>
                 {branchName && (
@@ -304,11 +304,14 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
 
           {/* Close button */}
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-full transition-colors cursor-pointer flex-shrink-0"
+            aria-label="إغلاق نافذة الصورة"
+            className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 flex-shrink-0"
             title="إغلاق (Esc)"
           >
-            <X className="w-5 h-5" />
+            <span className="text-base leading-none font-black">✕</span>
+            <span>إغلاق</span>
           </button>
         </div>
 

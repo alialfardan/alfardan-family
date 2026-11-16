@@ -594,23 +594,23 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
         createPortal(
           <div
             dir="rtl"
-            className="fixed inset-0 z-[999990] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto font-['Readex_Pro',sans-serif]"
+            className="fixed inset-0 z-[999990] bg-slate-950/75 backdrop-blur-sm flex items-end sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-6 p-0 sm:p-6 overflow-y-auto font-['Readex_Pro',sans-serif]"
             onClick={() => setSelectedFigure(null)}
           >
           <div
-            className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden my-auto max-h-[90vh] flex flex-col"
+            className="bg-white w-full max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200 overflow-hidden mt-12 sm:my-auto max-h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="bg-gradient-to-l from-[#0f291e] via-[#133829] to-[#1a4731] p-5 sm:p-6 text-white flex items-start justify-between gap-4">
-              <div className="flex items-center gap-4">
+            <div className="bg-gradient-to-l from-[#0f291e] via-[#133829] to-[#1a4731] p-4 sm:p-6 text-white flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3.5 min-w-0">
                 <MemberAvatar
                   personKey={selectedFigure.personKey}
                   name={selectedFigure.name}
                   src={selectedFigure.photo}
-                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400 shadow-lg bg-emerald-50 text-emerald-800 text-xl shrink-0"
+                  className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl object-cover border-2 border-amber-400 shadow-lg bg-emerald-50 text-emerald-800 text-xl shrink-0"
                 />
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="px-2.5 py-0.5 rounded-lg bg-amber-400/20 border border-amber-300/40 text-amber-200 text-[11px] font-bold">
                       {selectedFigure.branch}
@@ -621,16 +621,19 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                       </span>
                     )}
                   </div>
-                  <h2 className="text-lg sm:text-2xl font-black text-white">{selectedFigure.name}</h2>
+                  <h2 className="text-base sm:text-2xl font-black text-white leading-snug">{selectedFigure.name}</h2>
                   <p className="text-xs sm:text-sm text-amber-300 font-bold">{selectedFigure.title}</p>
                 </div>
               </div>
 
               <button
+                type="button"
                 onClick={() => setSelectedFigure(null)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                aria-label="إغلاق السيرة"
+                className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
               >
-                <X className="w-5 h-5" />
+                <span className="text-base leading-none font-black">✕</span>
+                <span>إغلاق</span>
               </button>
             </div>
 
@@ -802,15 +805,15 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
         createPortal(
           <div
             dir="rtl"
-            className="doc-viewer-backdrop fixed inset-0 z-[999999] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 font-['Readex_Pro',sans-serif]"
+            className="doc-viewer-backdrop fixed inset-0 z-[999999] bg-slate-950/90 backdrop-blur-md flex items-end sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-4 p-0 sm:p-4 font-['Readex_Pro',sans-serif]"
             onClick={() => setActiveManuscript(null)}
           >
             <div
-              className="doc-viewer-modal bg-white rounded-3xl max-w-5xl w-full h-[94dvh] max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col"
+              className="doc-viewer-modal bg-white rounded-t-3xl sm:rounded-3xl max-w-5xl w-full h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:h-[94dvh] max-h-[calc(100dvh-max(env(safe-area-inset-top,44px),48px))] sm:max-h-[94dvh] shadow-2xl border border-slate-200 overflow-hidden flex flex-col mt-12 sm:mt-0"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Sticky Top Header: Right = Counter, Center = Manuscript Title, Left = Large Clear Close Button (✕) */}
-              <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 pb-3 pt-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
+              <div className="doc-viewer-header sticky top-0 z-50 bg-white border-b border-slate-200 px-4 sm:px-5 py-3 flex items-center justify-between gap-2 shrink-0 shadow-xs">
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="px-2.5 py-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 font-mono tabular-nums">
                     1 / 1
@@ -824,19 +827,20 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={() => downloadImageSmoothly(activeManuscript.url, `${activeManuscript.title}.jpg`, onShowToast)}
-                    className="p-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
+                    className="min-h-[44px] px-3 py-2 rounded-full bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer flex items-center justify-center"
                     title="تنزيل المخطوطة"
                   >
                     <Download className="w-4 h-4" />
                   </button>
                   <button
+                    type="button"
                     onClick={() => setActiveManuscript(null)}
                     aria-label="إغلاق المخطوطة"
-                    className="flex items-center justify-center gap-1.5 min-w-[40px] min-h-[40px] px-3 py-1.5 bg-rose-50 hover:bg-rose-100 active:bg-rose-200 text-rose-700 border border-rose-200 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer shadow-2xs"
+                    className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
                     title="إغلاق"
                   >
                     <span className="text-base leading-none font-black">✕</span>
-                    <span className="hidden sm:inline">إغلاق</span>
+                    <span>إغلاق</span>
                   </button>
                 </div>
               </div>

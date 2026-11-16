@@ -122,10 +122,10 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
   const certCode = `FRD-${person.key.toUpperCase()}-G${person.generation}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-3xl w-full my-auto shadow-2xl border border-slate-200 text-slate-800 font-['Readex_Pro',sans-serif] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center pt-[max(env(safe-area-inset-top,44px),48px)] sm:pt-4 p-2 sm:p-4 bg-slate-900/80 backdrop-blur-md overflow-y-auto animate-in fade-in">
+      <div className="bg-white rounded-3xl max-w-3xl w-full mt-2 sm:my-auto shadow-2xl border border-slate-200 text-slate-800 font-['Readex_Pro',sans-serif] overflow-hidden">
         {/* Modal Top Bar (hidden on print) */}
-        <div className="print:hidden flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-slate-50/90">
+        <div className="print:hidden sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-100 bg-white/95 backdrop-blur-md">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-600" />
             <h3 className="text-sm sm:text-base font-bold text-slate-900">
@@ -139,17 +139,20 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
           <div className="flex items-center gap-2">
             <button
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
+              className="flex items-center gap-1.5 min-h-[44px] px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 active:scale-95 text-white rounded-full text-xs font-bold shadow-md transition-all cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               <span>طباعة / حفظ PDF</span>
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-full transition-colors cursor-pointer"
+              aria-label="إغلاق الوثيقة"
+              className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95"
               title="إغلاق"
             >
-              <X className="w-5 h-5" />
+              <span className="text-base leading-none font-black">✕</span>
+              <span>إغلاق</span>
             </button>
           </div>
         </div>
