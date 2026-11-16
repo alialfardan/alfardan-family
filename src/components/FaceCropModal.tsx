@@ -155,14 +155,24 @@ export const FaceCropModal: React.FC<FaceCropModalProps> = ({
 
   // Generate cropped output
   const handleConfirmCrop = () => {
-    if (!imageRef.current || !naturalSize.width) return;
+    if (!imageRef.current || !naturalSize.width) {
+      if (imageSrc) {
+        onCropComplete(imageSrc);
+      }
+      return;
+    }
 
-    const OUTPUT_SIZE = 200;
+    const OUTPUT_SIZE = 240;
     const canvas = document.createElement('canvas');
     canvas.width = OUTPUT_SIZE;
     canvas.height = OUTPUT_SIZE;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      if (imageSrc) {
+        onCropComplete(imageSrc);
+      }
+      return;
+    }
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
@@ -202,10 +212,9 @@ export const FaceCropModal: React.FC<FaceCropModalProps> = ({
       ctx.restore();
     }
 
-    // Ultra-compact 200x200 @ 0.7 Base64 (~5KB-8KB) stored directly in initialTreeData.json and Firebase
-    let dataUrl = canvas.toDataURL('image/webp', 0.7);
-    if (!dataUrl || !dataUrl.startsWith('data:image/webp')) {
-      dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    let dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+      dataUrl = canvas.toDataURL('image/webp', 0.8);
     }
     onCropComplete(dataUrl);
   };

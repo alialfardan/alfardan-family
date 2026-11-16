@@ -72,7 +72,7 @@ function sanitizeForFirestore(obj: any): any {
   return obj;
 }
 
-const SERVER_BASELINE_TS = 1743850000000;
+const SERVER_BASELINE_TS = 1794830043000;
 const VALID_SERVER_PHOTO_KEY_RE = /^[a-zA-Z0-9_-]+$/;
 
 function getServerAvatarVersion(url?: string): number {
@@ -82,9 +82,17 @@ function getServerAvatarVersion(url?: string): number {
 }
 
 const DEAD_SERVER_PHOTO_KEYS = new Set([
-  'o720', 'am_mvr3piu7h618', 'o310', 'o560', 'o656', 'o652',
   '1', '2', '33b3fde3-0f05-44d6-9aad-af4eadc51ce9'
 ]);
+
+const STALE_SERVER_PHOTO_CUTOFF_BY_KEY: Record<string, number> = {
+  o560: 1794830042524,
+  o720: 1794700000000,
+  am_mvr3piu7h618: 1794700000000,
+  o310: 1794700000000,
+  o656: 1794700000000,
+  o652: 1794700000000,
+};
 
 function isValidServerPhotoEntry(key: string, val: unknown): val is string {
   if (!key || !VALID_SERVER_PHOTO_KEY_RE.test(key) || DEAD_SERVER_PHOTO_KEYS.has(key)) return false;
@@ -98,6 +106,10 @@ function isValidServerPhotoEntry(key: string, val: unknown): val is string {
     trimmed.includes('WhatsApp') ||
     trimmed.includes('\\')
   ) {
+    return false;
+  }
+  const cutoff = STALE_SERVER_PHOTO_CUTOFF_BY_KEY[key];
+  if (cutoff && getServerAvatarVersion(trimmed) <= cutoff) {
     return false;
   }
   if (trimmed.startsWith('/avatars/')) {
@@ -841,7 +853,7 @@ async function startServer() {
                 if (existingUrl && existingUrl.startsWith('/avatars/') && cleanPath.startsWith('/avatars/')) {
                   const exV = getServerAvatarVersion(existingUrl);
                   const inV = getServerAvatarVersion(cleanPath);
-                  mergedPhotos[pk] = inV >= exV ? cleanPath : existingUrl;
+                  mergedPhotos[pk] = (rawPayload?.replacePhotos || inV >= exV) ? cleanPath : existingUrl;
                 } else {
                   mergedPhotos[pk] = cleanPath;
                 }
@@ -1030,7 +1042,16 @@ async function startServer() {
         return res.status(400).json({ error: 'Missing key or dataUrl' });
       }
 
-      const vStamp = getServerSafeTimestamp();
+      let existingMaxTs = SERVER_BASELINE_TS;
+      try {
+        const initFull = path.resolve(__dirname, 'src/data/initialTreeData.json');
+        if (fs.existsSync(initFull)) {
+          const parsedInit = JSON.parse(fs.readFileSync(initFull, 'utf-8'));
+          const uAt = parsedInit?.familyData?.updatedAt || parsedInit?.updatedAt || 0;
+          if (uAt > existingMaxTs) existingMaxTs = uAt;
+        }
+      } catch {}
+      const vStamp = getServerSafeTimestamp(Date.now(), existingMaxTs);
       const { cleanPath: cleanAvatarPath, filesWritten } = savePhotoToAvatarsDirAndGetCleanPath(key, dataUrl, vStamp);
       if (!cleanAvatarPath) {
         return res.status(400).json({ error: 'Invalid dataUrl format' });

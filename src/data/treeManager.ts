@@ -239,6 +239,20 @@ function getAvatarUrlVersion(url?: string): number {
   return m ? parseInt(m[1], 10) || 0 : 0;
 }
 
+const DEAD_PHOTO_KEYS = new Set([
+  '1', '2', '33b3fde3-0f05-44d6-9aad-af4eadc51ce9'
+]);
+
+// Stale photo timestamps at or below which legacy broken URLs are ignored, while any new photo upload is accepted
+const STALE_PHOTO_CUTOFF_BY_KEY: Record<string, number> = {
+  o560: 1794830042524,
+  o720: 1794700000000,
+  am_mvr3piu7h618: 1794700000000,
+  o310: 1794700000000,
+  o656: 1794700000000,
+  o652: 1794700000000,
+};
+
 export function isValidPhotoEntry(key: string, val: unknown): val is string {
   if (!key || !VALID_PHOTO_KEY_RE.test(key) || DEAD_PHOTO_KEYS.has(key)) return false;
   if (typeof val !== 'string') return false;
@@ -251,6 +265,10 @@ export function isValidPhotoEntry(key: string, val: unknown): val is string {
     trimmed.includes('WhatsApp') ||
     trimmed.includes('\\')
   ) {
+    return false;
+  }
+  const cutoff = STALE_PHOTO_CUTOFF_BY_KEY[key];
+  if (cutoff && getAvatarUrlVersion(trimmed) <= cutoff) {
     return false;
   }
   return true;
@@ -327,6 +345,32 @@ export function cleanupObsoleteStorageKeys(): void {
     for (const lk of legacyKeys) {
       try { localStorage.removeItem(lk); } catch {}
     }
+    // One-time cleanup of any stale o560 avatar reference in localStorage
+    if (!localStorage.getItem('fardan_o560_stale_photo_cleared_v1')) {
+      try {
+        const rawCustom = localStorage.getItem(CUSTOM_AVATARS_STORAGE_KEY);
+        if (rawCustom) {
+          const parsedCustom = JSON.parse(rawCustom);
+          if (parsedCustom && typeof parsedCustom === 'object' && 'o560' in parsedCustom) {
+            delete parsedCustom.o560;
+            localStorage.setItem(CUSTOM_AVATARS_STORAGE_KEY, JSON.stringify(parsedCustom));
+          }
+        }
+      } catch {}
+      try {
+        const rawState = localStorage.getItem(STORAGE_KEY);
+        if (rawState) {
+          const parsedState = JSON.parse(rawState);
+          if (parsedState?.photos && 'o560' in parsedState.photos) {
+            delete parsedState.photos.o560;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsedState));
+          }
+        }
+      } catch {}
+      try {
+        localStorage.setItem('fardan_o560_stale_photo_cleared_v1', '1');
+      } catch {}
+    }
   } catch {}
 }
 
@@ -339,11 +383,6 @@ export function standardizeArabicSpelling(text: string): string {
   if (!text) return '';
   return text.trim();
 }
-
-const DEAD_PHOTO_KEYS = new Set([
-  'o720', 'am_mvr3piu7h618', 'o310', 'o560', 'o656', 'o652',
-  '1', '2', '33b3fde3-0f05-44d6-9aad-af4eadc51ce9'
-]);
 
 export function cleanPhotosMap(photos?: Record<string, string>): Record<string, string> {
   const clean: Record<string, string> = {};
@@ -361,7 +400,7 @@ export function cleanPhotosMap(photos?: Record<string, string>): Record<string, 
   return clean;
 }
 
-const BASELINE_SAFE_TS = 1743850000000;
+const BASELINE_SAFE_TS = Math.max(1794830043000, Number(DEFAULT_FAMILY_DATA?.updatedAt) || 0);
 
 export function normalizeTimestamp(ts?: number | null): number {
   if (!ts || typeof ts !== 'number' || ts <= 0) return 0;
@@ -371,7 +410,7 @@ export function normalizeTimestamp(ts?: number | null): number {
 export function getMonotonicTimestamp(currentState?: Partial<FamilyState> | number): number {
   const rawNow = Date.now();
   if (typeof currentState === 'number') {
-    return Math.max(rawNow, normalizeTimestamp(currentState) + 100);
+    return Math.max(rawNow, BASELINE_SAFE_TS + 100, normalizeTimestamp(currentState) + 100);
   }
   const stateUpdated = normalizeTimestamp(currentState?.updatedAt);
   let maxMemberAt = 0;
@@ -783,7 +822,7 @@ export function loadSavedState(): FamilyState {
  * with the clean path /avatars/[key].jpg?v=[timestamp].
  */
 export async function uploadMemberAvatarToDisk(key: string, dataUrl: string): Promise<string> {
-  const fallbackCleanPath = `/avatars/${key}.jpg?v=${Date.now()}`;
+  const fallbackCleanPath = `/avatars/${key}.jpg?v=${getMonotonicTimestamp()}`;
   if (!key || !dataUrl) return fallbackCleanPath;
   if (dataUrl.startsWith('data:image/')) {
     saveCustomAvatarBackup(key, dataUrl);

@@ -719,11 +719,12 @@ export default function App() {
       const newId = 'm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
       const newMemberKey = 'a' + newId;
       const hasPhoto = Boolean(data.photo && typeof data.photo === 'string' && data.photo.trim());
-      const vNow = Date.now();
+      const vNow = getMonotonicTimestamp(familyState);
       const cleanAvatarPath = hasPhoto ? `/avatars/${newMemberKey}.jpg?v=${vNow}` : undefined;
 
       if (hasPhoto && data.photo) {
         clearFailedAvatarUrl(newMemberKey);
+        if (cleanAvatarPath) clearFailedAvatarUrl(cleanAvatarPath);
         clearPhotoDeletedForCloud(newMemberKey);
         uploadMemberAvatarToDisk(newMemberKey, data.photo).catch(() => {});
       }
@@ -785,15 +786,17 @@ export default function App() {
         finalPhoto &&
         (finalPhoto.startsWith('data:image/') || finalPhoto !== existingPhoto)
       );
+      const vNow = getMonotonicTimestamp(familyState);
       const cleanAvatarPath = isPhotoExplicitlyRemoved
         ? ''
-        : (finalPhoto ? (isNewOrUpdatedPhoto ? `/avatars/${key}.jpg?v=${Date.now()}` : finalPhoto) : '');
+        : (finalPhoto ? (isNewOrUpdatedPhoto ? `/avatars/${key}.jpg?v=${vNow}` : finalPhoto) : '');
 
       if (isPhotoExplicitlyRemoved) {
         markPhotoDeletedForCloud(key);
         deleteMemberAvatarFromDisk(key).catch(() => {});
       } else if (isNewOrUpdatedPhoto && finalPhoto) {
         clearFailedAvatarUrl(key);
+        if (cleanAvatarPath) clearFailedAvatarUrl(cleanAvatarPath);
         clearPhotoDeletedForCloud(key);
         uploadMemberAvatarToDisk(key, finalPhoto).catch(() => {});
       }
@@ -1061,11 +1064,12 @@ export default function App() {
   const handleSelectGalleryPhoto = async (url: string) => {
     if (!avatarGalleryModal.targetKey) return;
     const key = avatarGalleryModal.targetKey;
+    const vNow = getMonotonicTimestamp(familyState);
+    const cleanAvatarPath = `/avatars/${key}.jpg?v=${vNow}`;
     clearFailedAvatarUrl(key);
+    clearFailedAvatarUrl(cleanAvatarPath);
     clearPhotoDeletedForCloud(key);
     await uploadMemberAvatarToDisk(key, url).catch(() => {});
-
-    const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
 
     setFamilyState(prev => {
       const nextTs = getMonotonicTimestamp(prev);
@@ -1074,7 +1078,7 @@ export default function App() {
         photos: { ...(prev.photos || {}), [key]: url },
         updatedAt: nextTs
       };
-      persistAndSyncImmediately(nextStateForDisk);
+      persistAndSyncImmediately(nextStateForDisk, { replacePhotos: true });
       const nextCleanState: FamilyState = {
         ...nextStateForDisk,
         photos: { ...(prev.photos || {}), [key]: cleanAvatarPath }
@@ -1128,10 +1132,12 @@ export default function App() {
   const handleFaceCropComplete = async (croppedDataUrl: string) => {
     if (!faceCropModal.targetKey) return;
     const key = faceCropModal.targetKey;
-    const cleanAvatarPath = `/avatars/${key}.jpg?v=${Date.now()}`;
+    const vNow = getMonotonicTimestamp(familyState);
+    const cleanAvatarPath = `/avatars/${key}.jpg?v=${vNow}`;
 
     // 1. Immediately write physical .jpg file to public/avatars/[key].jpg on disk
     clearFailedAvatarUrl(key);
+    clearFailedAvatarUrl(cleanAvatarPath);
     clearPhotoDeletedForCloud(key);
     await uploadMemberAvatarToDisk(key, croppedDataUrl).catch(() => {});
 
@@ -1144,7 +1150,7 @@ export default function App() {
         photos: { ...(prev.photos || {}), [key]: croppedDataUrl },
         updatedAt: nextTs
       };
-      persistAndSyncImmediately(nextStateWithBase64);
+      persistAndSyncImmediately(nextStateWithBase64, { replacePhotos: true });
       const nextCleanState: FamilyState = {
         ...nextStateWithBase64,
         photos: { ...(prev.photos || {}), [key]: cleanAvatarPath }

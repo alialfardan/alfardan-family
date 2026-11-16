@@ -4,6 +4,7 @@ import { normalizeArabic, getArabicInitial, getQuadLineageName } from '../data/t
 import { X, Search, Camera, Trash, UserPlus, Check, Sparkles, Heart } from 'lucide-react';
 import { FaceCropModal } from './FaceCropModal';
 import { fastCompressAvatar } from '../utils/imageDownload';
+import { sanitizeAvatarUrl, markAvatarUrlFailed, clearFailedAvatarUrl } from './MemberAvatar';
 
 interface AddEditMemberModalProps {
   isOpen: boolean;
@@ -50,6 +51,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
   const [parentKey, setParentKey] = useState<string>('');
   const [selectedMotherId, setSelectedMotherId] = useState<string>('');
   const [photo, setPhoto] = useState<string | null>(null);
+  const [photoLoadError, setPhotoLoadError] = useState(false);
   const [photoRemoved, setPhotoRemoved] = useState(false);
   const [isDeceased, setIsDeceased] = useState(false);
   const [deathYear, setDeathYear] = useState('');
@@ -82,6 +84,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
         setSelectedMotherId('');
       }
       setPhoto(null);
+      setPhotoLoadError(false);
       setPhotoRemoved(false);
       setIsDeceased(false);
       setDeathYear('');
@@ -109,7 +112,9 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
         } else {
           setSelectedMotherId('');
         }
-        setPhoto(person.photo || null);
+        const safeInitialPhoto = sanitizeAvatarUrl(person.photo, targetKey);
+        setPhoto(safeInitialPhoto);
+        setPhotoLoadError(false);
         setPhotoRemoved(false);
         setIsChangingParent(false);
         setErrorMessage('');
@@ -224,7 +229,7 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
       birthDate: birthDateVal,
       note: note.trim(),
       parentKey,
-      photo: photoRemoved ? '' : photo,
+      photo: photoRemoved || photoLoadError ? '' : photo,
       motherInfo,
       isDeceased,
       deathYear: parsedDeathYear
@@ -488,8 +493,19 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
             </label>
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center text-slate-500 text-lg font-bold">
-                {photo ? (
-                  <img src={photo} alt="" className="w-full h-full object-cover" />
+                {photo && !photoLoadError ? (
+                  <img
+                    key={photo}
+                    src={photo}
+                    alt={name.trim() || 'صورة الفرد'}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.stopPropagation();
+                      markAvatarUrlFailed(photo);
+                      setPhotoLoadError(true);
+                      setPhoto(null);
+                    }}
+                  />
                 ) : (
                   <span>{name.trim() ? getArabicInitial(name) : '؟'}</span>
                 )}
@@ -505,18 +521,25 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+                  onClick={() => {
+                    setErrorMessage('');
+                    if (fileInputRef.current) {
+                      fileInputRef.current.value = '';
+                      fileInputRef.current.click();
+                    }
+                  }}
+                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Camera className="w-3.5 h-3.5" />
-                  <span>{photo ? 'تغيير الصورة' : 'رفع صورة'}</span>
+                  <span>{photo && !photoLoadError ? 'تغيير الصورة' : 'رفع صورة'}</span>
                 </button>
 
-                {photo && (
+                {photo && !photoLoadError && (
                   <button
                     type="button"
                     onClick={() => {
                       setPhoto(null);
+                      setPhotoLoadError(false);
                       setPhotoRemoved(true);
                     }}
                     className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
@@ -630,7 +653,11 @@ export const AddEditMemberModal: React.FC<AddEditMemberModalProps> = ({
             setRawImageForCrop('');
           }}
           onCropComplete={(croppedUrl) => {
+            if (mode === 'edit' && targetKey) {
+              clearFailedAvatarUrl(targetKey);
+            }
             setPhoto(croppedUrl);
+            setPhotoLoadError(false);
             setPhotoRemoved(false);
             setIsCropModalOpen(false);
             setRawImageForCrop('');
