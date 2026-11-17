@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
-import { searchFamilyMembers, BRANCH_COLORS, getArabicInitial, formatLineageString, getQuadLineageName } from '../data/treeManager';
+import { searchFamilyMembers, BRANCH_COLORS, getArabicInitial, formatLineageString, getQuadLineageName, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
 import {
   Search,
@@ -401,12 +401,19 @@ export const SearchResultsModal: React.FC<SearchResultsModalProps> = ({
 
                   {/* Lineage Patronymic Chain box */}
                   <div className="bg-amber-50/50 rounded-xl p-2.5 border border-amber-200/60 text-xs text-slate-700 font-['Noto_Naskh_Arabic'] leading-relaxed">
-                    <span className="font-bold text-amber-900 ml-1.5 font-['Readex_Pro']">
-                      سلسلة النسب:
-                    </span>
-                    <span className="text-slate-800 font-medium">
-                      {lineageStr}
-                    </span>
+                    <div>
+                      <span className="font-bold text-amber-900 ml-1.5 font-['Readex_Pro']">
+                        سلسلة النسب:
+                      </span>
+                      <span className="text-slate-800 font-semibold">
+                        {lineageStr}
+                      </span>
+                    </div>
+                    {hasHistoricalRootsSubtitle(person.key) && (
+                      <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block font-['Readex_Pro']">
+                        {HISTORICAL_ROOTS_LINE}
+                      </span>
+                    )}
                   </div>
                 </div>
               );

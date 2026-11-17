@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
-import { searchFamilyMembers, BRANCH_COLORS, getArabicInitial, getQuadLineageName } from '../data/treeManager';
+import { searchFamilyMembers, BRANCH_COLORS, getArabicInitial, getQuadLineageName, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
 import {
   analyzeKinship,
@@ -459,9 +459,14 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <h4 className="font-naskh text-lg sm:text-xl font-bold text-emerald-950 truncate">
                       {formatPersonDisplayName(personA, registry.people, isPrivacyRestricted)}
                     </h4>
-                    <p className="font-naskh text-sm font-semibold text-emerald-900 truncate">
+                    <p className="font-naskh text-sm font-semibold text-emerald-900 leading-snug">
                       {getQuadLineageName(personA.key, registry.people, 4)}
                     </p>
+                    {hasHistoricalRootsSubtitle(personA.key) && (
+                      <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                        {HISTORICAL_ROOTS_LINE}
+                      </span>
+                    )}
                     <p className="text-xs text-emerald-800 mt-0.5">
                       الجيل {personA.generation} · {personA.branchName || 'فرع العائلة'}
                     </p>
@@ -606,9 +611,14 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <h4 className="font-naskh text-lg sm:text-xl font-bold text-amber-950 truncate">
                       {formatPersonDisplayName(personB, registry.people, isPrivacyRestricted)}
                     </h4>
-                    <p className="font-naskh text-sm font-semibold text-amber-950 truncate">
+                    <p className="font-naskh text-sm font-semibold text-amber-950 leading-snug">
                       {getQuadLineageName(personB.key, registry.people, 4)}
                     </p>
+                    {hasHistoricalRootsSubtitle(personB.key) && (
+                      <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                        {HISTORICAL_ROOTS_LINE}
+                      </span>
+                    )}
                     <p className="text-xs text-amber-800 mt-0.5">
                       الجيل {personB.generation} · {personB.branchName || 'فرع العائلة'}
                     </p>

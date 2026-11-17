@@ -1396,8 +1396,23 @@ export function buildFamilyRegistry(state: FamilyState): FamilyTreeProcessed {
   };
 }
 
-// Compute full Arabic lineage chain (e.g. "أحمد بن منصور بن أحمد بن مكي بن أحمد...")
-export function getLineageChain(key: string, registry: Map<string, ProcessedPerson>): ProcessedPerson[] {
+export const HISTORICAL_ROOT_KEYS = new Set<string>(['ot0', 'ot1', 'ot2']);
+export const HISTORICAL_ROOTS_LINE = 'الجذور: بن عبد الحسين بن يوسف بن الشيخ علي';
+
+export function isHistoricalRootPerson(key: string | null | undefined): boolean {
+  return Boolean(key && HISTORICAL_ROOT_KEYS.has(key));
+}
+
+export function hasHistoricalRootsSubtitle(key: string | null | undefined): boolean {
+  return Boolean(key && !HISTORICAL_ROOT_KEYS.has(key));
+}
+
+export function getHistoricalRootsSubtitle(key: string | null | undefined): string | null {
+  return hasHistoricalRootsSubtitle(key) ? HISTORICAL_ROOTS_LINE : null;
+}
+
+// Compute complete historical lineage chain all the way up to the founding root ('ot0' الشيخ علي)
+export function getFullLineageChain(key: string, registry: Map<string, ProcessedPerson>): ProcessedPerson[] {
   const chain: ProcessedPerson[] = [];
   let cur = registry.get(key);
   let guard = 0;
@@ -1407,6 +1422,18 @@ export function getLineageChain(key: string, registry: Map<string, ProcessedPers
     cur = registry.get(cur.parentKey);
   }
   return chain;
+}
+
+// Compute primary Arabic lineage chain ending at "الفردان" (for Al-Fardan descendants)
+// or "أيوب" (for Ayoub descendants), stopping before the 3 founding historical roots ('ot2', 'ot1', 'ot0'),
+// except when inspecting one of the 3 founding ancestors themselves.
+export function getLineageChain(key: string, registry: Map<string, ProcessedPerson>): ProcessedPerson[] {
+  const fullChain = getFullLineageChain(key, registry);
+  if (HISTORICAL_ROOT_KEYS.has(key)) {
+    return fullChain;
+  }
+  const filtered = fullChain.filter(p => !HISTORICAL_ROOT_KEYS.has(p.key));
+  return filtered.length > 0 ? filtered : fullChain;
 }
 
 export function formatLineageString(key: string, registry: Map<string, ProcessedPerson>): string {
@@ -1420,24 +1447,14 @@ export function formatLineageString(key: string, registry: Map<string, Processed
     .join(' ');
 }
 
-// Compute 4-generation patrilineal lineage string (الاسم الرباعي: الاسم .. اسم الأب .. اسم الجد .. اسم جد الجد)
+// Unified primary lineage string across all dropdowns, directory cards, certificates, and sections:
+// Always returns the complete primary lineage ending with "الفردان" or "أيوب" (or natural root name for ot0/ot1/ot2).
 export function getQuadLineageName(
   key: string,
   registry: Map<string, ProcessedPerson>,
-  maxGenerations: number = 4
+  _maxGenerations: number = 4
 ): string {
-  const chain = getLineageChain(key, registry);
-  if (!chain || chain.length === 0) return '';
-  const slice = chain.slice(0, maxGenerations);
-  if (slice.length === 1) return slice[0].name;
-
-  let result = slice[0].name;
-  for (let i = 1; i < slice.length; i++) {
-    const prev = slice[i - 1];
-    const connector = prev.gender === 'f' ? 'بنت' : 'بن';
-    result += ` ${connector} ${slice[i].name}`;
-  }
-  return result;
+  return formatLineageString(key, registry);
 }
 
 // Normalizes Arabic text for flexible genealogy search while preserving titles (ملا، الشيخ، أبو، الحاج)

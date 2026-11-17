@@ -1,5 +1,5 @@
 import { FamilyTreeProcessed, ProcessedPerson, MotherInfo, SpouseInfo } from '../types/family';
-import { normalizeArabic, formatLineageString, getQuadLineageName, ARABIC_ORDINALS } from './treeManager';
+import { normalizeArabic, formatLineageString, getQuadLineageName, ARABIC_ORDINALS, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from './treeManager';
 import { analyzeKinship, getAncestorsPath, KinshipResult } from './kinshipAnalyzer';
 
 export interface PersonDeepProfile {
@@ -388,10 +388,11 @@ export function formatDeepProfileResponse(
 
   const sections: AdvisorResponse['sections'] = [];
 
-  // 1. عمود النسب والأصول حتى الجد الأكبر الشيخ علي
-  const lineageParagraph = `${isMale ? 'هو' : 'هي'} «${profile.fullLineageText}»، ${isMale ? 'ينتمي' : 'تنتمي'} إلى ${genOrdinal} في شجرة عائلة الفردان الكرزكاني (${person.branchName || 'الأصل الجامع'}). ويمتد عمود نسب${isMale ? 'ه' : 'ها'} الموثق عبر ${profile.ancestorsChain.length} أجيال متصلة وصولاً إلى الجد الأكبر الشيخ علي الكرزكاني.`;
+  // 1. عمود النسب المتصل والجذور التاريخية
+  const rootsSub = hasHistoricalRootsSubtitle(person.key) ? `\n${HISTORICAL_ROOTS_LINE}` : '';
+  const lineageParagraph = `${isMale ? 'هو' : 'هي'} «${profile.fullLineageText}»، ${isMale ? 'ينتمي' : 'تنتمي'} إلى ${genOrdinal} في شجرة عائلة الفردان الكرزكاني (${person.branchName || 'الأصل الجامع'}).${rootsSub}`;
   sections.push({
-    heading: '١. عمود النسب والأصول حتى الجد الأكبر الشيخ علي',
+    heading: '١. عمود النسب المتصل والجذور التاريخية',
     content: lineageParagraph,
     badge: genOrdinal,
     tone: 'emerald'
@@ -666,14 +667,19 @@ export function formatTwoPersonKinshipResponse(
     tone: 'emerald'
   });
 
-  // 2. تتبع عمود النسب الكامل للطرفين حتى الجد الأكبر الشيخ علي
+  // 2. تتبع عمود النسب للطرفين
+  const rootsSubBoth =
+    hasHistoricalRootsSubtitle(personA.key) || hasHistoricalRootsSubtitle(personB.key)
+      ? [HISTORICAL_ROOTS_LINE]
+      : [];
   const lineageBothText = [
     `• نسب الطرف الأول: ${formatLineageString(personA.key, people)} (الجيل ${personA.generation} - ${personA.branchName || 'الأصل'}).`,
-    `• نسب الطرف الثاني: ${formatLineageString(personB.key, people)} (الجيل ${personB.generation} - ${personB.branchName || 'الأصل'}).`
+    `• نسب الطرف الثاني: ${formatLineageString(personB.key, people)} (الجيل ${personB.generation} - ${personB.branchName || 'الأصل'}).`,
+    ...rootsSubBoth
   ].join('\n');
 
   sections.push({
-    heading: '٢. تتبع عمود النسب الكامل وصولاً إلى الجد الأكبر الشيخ علي',
+    heading: '٢. تتبع عمود النسب المتصل والجذور التاريخية',
     content: lineageBothText,
     badge: 'عمود النسب',
     tone: 'amber'

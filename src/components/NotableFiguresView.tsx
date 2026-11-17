@@ -23,7 +23,7 @@ import {
   FileText
 } from 'lucide-react';
 import { NotableFigure, NotableManuscript } from '../types/family';
-import { FamilyTreeProcessed, DEFAULT_NOTABLE_FIGURES, formatLineageString, normalizeArabic } from '../data/treeManager';
+import { FamilyTreeProcessed, DEFAULT_NOTABLE_FIGURES, formatLineageString, normalizeArabic, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
 import { downloadImageSmoothly, compressImageFile, fastCompressAvatar } from '../utils/imageDownload';
 
@@ -94,8 +94,16 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
       .filter((fig) => fig && !fig.deleted && fig.name)
       .map((fig) => {
         const treePerson = fig.personKey ? registry.people.get(fig.personKey) : undefined;
+        const primaryLineage = fig.personKey ? formatLineageString(fig.personKey, registry.people) : '';
+        const trimmedName = fig.name.trim();
+        const shouldUsePrimaryLineage =
+          Boolean(primaryLineage) &&
+          (trimmedName.endsWith(' بن') ||
+            trimmedName.endsWith(' بنت') ||
+            primaryLineage.startsWith(trimmedName));
         return {
           ...fig,
+          name: shouldUsePrimaryLineage ? primaryLineage : fig.name,
           photo: fig.photo || treePerson?.photo || undefined
         };
       });
@@ -206,7 +214,7 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
     const fullLineage = formatLineageString(key, registry.people);
     setFormPersonKey(key);
     if (!formName.trim()) {
-      setFormName(fullLineage.split(' ').slice(0, 7).join(' '));
+      setFormName(fullLineage);
     }
     if (p.branchName) {
       setFormBranch(p.branchName);
@@ -529,8 +537,15 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                   {/* Lineage Pill if linked to tree */}
                   {lineageStr && (
                     <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/70 text-[11px] text-slate-600 leading-relaxed">
-                      <span className="font-bold text-slate-800 ml-1">عمود النسب:</span>
-                      <span>{lineageStr}</span>
+                      <div>
+                        <span className="font-bold text-slate-800 ml-1">عمود النسب:</span>
+                        <span className="font-semibold text-slate-800">{lineageStr}</span>
+                      </div>
+                      {fig.personKey && hasHistoricalRootsSubtitle(fig.personKey) && (
+                        <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                          {HISTORICAL_ROOTS_LINE}
+                        </span>
+                      )}
                     </div>
                   )}
 
@@ -649,6 +664,11 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                   <p className="text-xs sm:text-sm font-bold text-emerald-950 leading-relaxed">
                     {formatLineageString(selectedFigure.personKey, registry.people)}
                   </p>
+                  {hasHistoricalRootsSubtitle(selectedFigure.personKey) && (
+                    <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                      {HISTORICAL_ROOTS_LINE}
+                    </span>
+                  )}
                 </div>
               )}
 

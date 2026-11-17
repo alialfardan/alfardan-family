@@ -8,6 +8,7 @@ import {
   User,
   Move
 } from 'lucide-react';
+import { HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
 
 interface PersonPhotoLightboxModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
   onClose,
   photoUrl,
   personName,
+  personKey,
   generation,
   branchName,
   lineageTitle,
@@ -295,9 +297,16 @@ export const PersonPhotoLightboxModal: React.FC<PersonPhotoLightboxModalProps> =
                 )}
               </div>
               {lineageTitle && (
-                <p className="text-xs text-slate-500 truncate mt-0.5 font-medium">
-                  {lineageTitle}
-                </p>
+                <div>
+                  <p className="text-xs text-slate-500 truncate mt-0.5 font-medium">
+                    {lineageTitle}
+                  </p>
+                  {personKey && hasHistoricalRootsSubtitle(personKey) && (
+                    <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                      {HISTORICAL_ROOTS_LINE}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>

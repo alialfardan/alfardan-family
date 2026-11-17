@@ -8,7 +8,9 @@ import {
   getQuadLineageName,
   formatArabicCount,
   getChildrenOfSpouse,
-  normalizeArabic
+  normalizeArabic,
+  HISTORICAL_ROOTS_LINE,
+  hasHistoricalRootsSubtitle
 } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
 import {
@@ -1031,6 +1033,11 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
                 )}
               </React.Fragment>
             ))}
+            {hasHistoricalRootsSubtitle(person.key) && (
+              <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                {HISTORICAL_ROOTS_LINE}
+              </span>
+            )}
           </div>
         </div>
 

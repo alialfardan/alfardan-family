@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
-import { getLineageChain, getQuadLineageName, searchFamilyMembers } from '../data/treeManager';
+import { getLineageChain, getQuadLineageName, searchFamilyMembers, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle, isHistoricalRootPerson, formatLineageString } from '../data/treeManager';
 import { Printer, Award, X, Search, Shield, Type, Check, Space, Sparkles } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -383,19 +383,28 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
                     </React.Fragment>
                   ))}
                 </div>
+                {hasHistoricalRootsSubtitle(person.key) && (
+                  <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-2 block font-['Readex_Pro',sans-serif]">
+                    {HISTORICAL_ROOTS_LINE}
+                  </span>
+                )}
               </div>
 
               <p
                 className="text-xs sm:text-sm text-slate-600 italic"
                 style={{ fontFamily: currentFont.fontFamily }}
               >
-                {person.branch === 'b1' || person.key === 'o4' || chain.some(c => c.key === 'o4')
-                  ? '«من ذرية محمد بن الفردان بن عبد الحسين بن يوسف بن الشيخ علي الكرزكاني»'
+                {isHistoricalRootPerson(person.key)
+                  ? `«${formatLineageString(person.key, registry.people)} الكرزكاني»`
+                  : person.branch === 'b1' || person.key === 'o4' || chain.some(c => c.key === 'o4')
+                  ? '«من ذرية محمد بن الفردان الكرزكاني»'
                   : person.branch === 'b3' || person.key === 'o15' || chain.some(c => c.key === 'o15')
-                  ? '«من ذرية حسين بن الفردان بن عبد الحسين بن يوسف بن الشيخ علي الكرزكاني»'
+                  ? '«من ذرية حسين بن الفردان الكرزكاني»'
                   : person.key === 'am_mvzm8u6pyafp'
-                  ? '«من ذرية الفردان بن عبد الحسين بن يوسف بن الشيخ علي الكرزكاني»'
-                  : '«من ذرية فردان بن أيوب بن عبد الحسين بن يوسف بن الشيخ علي الكرزكاني»'}
+                  ? '«من ذرية الفردان الكرزكاني»'
+                  : person.key === 'ot3'
+                  ? '«من ذرية أيوب الكرزكاني»'
+                  : '«من ذرية فردان بن أيوب الكرزكاني»'}
               </p>
             </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ArchivalPhoto, FamilyTreeProcessed } from '../types/family';
+import { formatLineageString, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
 import {
   Images,
   Image as ImageIcon,
@@ -883,11 +884,18 @@ export const ArchivalPhotosView: React.FC<ArchivalPhotosViewProps> = ({
                           return (
                             <div
                               key={key}
-                              className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-emerald-50 border border-slate-200 transition-colors"
+                              className="flex items-center justify-between p-2 rounded-xl bg-slate-50 hover:bg-emerald-50 border border-slate-200 transition-colors gap-2"
                             >
-                              <div>
-                                <p className="text-xs font-bold text-slate-900">{person.name}</p>
-                                <p className="text-[10px] text-slate-500">الجيل {person.generation}</p>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-900 leading-snug">
+                                  {formatLineageString(key, registry.people) || person.name}
+                                </p>
+                                {hasHistoricalRootsSubtitle(key) && (
+                                  <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                                    {HISTORICAL_ROOTS_LINE}
+                                  </span>
+                                )}
+                                <p className="text-[10px] text-slate-500 mt-0.5">الجيل {person.generation}</p>
                               </div>
                               <button
                                 onClick={() => {

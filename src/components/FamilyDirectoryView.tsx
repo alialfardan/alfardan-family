@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
-import { normalizeArabic, BRANCH_COLORS, getArabicInitial, searchFamilyMembers, getQuadLineageName } from '../data/treeManager';
+import { normalizeArabic, BRANCH_COLORS, getArabicInitial, searchFamilyMembers, getQuadLineageName, formatLineageString, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
 import { Search, Filter, ArrowUpDown, ChevronRight, User, Eye, Camera, FileText, X, Edit3, Trash2, Plus } from 'lucide-react';
 import { MemberAvatar } from './MemberAvatar';
 
@@ -444,9 +444,14 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
                       )}
                     </div>
 
-                    <p className="text-xs text-emerald-800 font-semibold truncate mt-0.5" title={getQuadLineageName(person.key, registry.people, 4)}>
-                      {getQuadLineageName(person.key, registry.people, 4)}
+                    <p className="text-xs text-emerald-800 font-semibold leading-snug mt-0.5" title={formatLineageString(person.key, registry.people)}>
+                      {formatLineageString(person.key, registry.people)}
                     </p>
+                    {hasHistoricalRootsSubtitle(person.key) && (
+                      <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                        {HISTORICAL_ROOTS_LINE}
+                      </span>
+                    )}
 
                     <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-400">
                       <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
