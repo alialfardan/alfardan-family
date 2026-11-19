@@ -397,11 +397,11 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
                 {isHistoricalRootPerson(person.key)
                   ? `«${formatLineageString(person.key, registry.people)} الكرزكاني»`
                   : person.branch === 'b1' || person.key === 'o4' || chain.some(c => c.key === 'o4')
-                  ? '«من ذرية محمد بن الفردان الكرزكاني»'
+                  ? '«من ذرية محمد بن فردان الكرزكاني»'
                   : person.branch === 'b3' || person.key === 'o15' || chain.some(c => c.key === 'o15')
-                  ? '«من ذرية حسين بن الفردان الكرزكاني»'
+                  ? '«من ذرية حسين بن فردان الكرزكاني»'
                   : person.key === 'am_mvzm8u6pyafp'
-                  ? '«من ذرية الفردان الكرزكاني»'
+                  ? '«من ذرية فردان الكرزكاني»'
                   : person.key === 'ot3'
                   ? '«من ذرية أيوب الكرزكاني»'
                   : '«من ذرية فردان بن أيوب الكرزكاني»'}

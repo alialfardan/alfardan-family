@@ -310,28 +310,30 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
     >
       {/* Top Banner with Branch Color Accent */}
       <div
-        className="relative flex-shrink-0 px-6 pt-6 pb-5 border-b border-slate-100 transition-colors touch-pan-y"
+        className="relative flex-shrink-0 px-6 pt-4 pb-5 border-b border-slate-100 transition-colors touch-pan-y"
         style={{
           background: `linear-gradient(135deg, ${branchInfo.bg} 0%, #ffffff 80%)`,
           touchAction: 'pan-y'
         }}
       >
-        {/* Close Button (shown in side drawer mode; modal mode has its own sticky top close bar) */}
+        {/* Close Button Top Bar (shown in side drawer mode; modal mode has its own sticky top close bar) */}
         {!isModalView && (
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="إغلاق البطاقة"
-            className="absolute top-3 left-3 min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer z-20"
-            title="إغلاق البطاقة"
-          >
-            <span className="text-base leading-none font-black">✕</span>
-            <span>إغلاق</span>
-          </button>
+          <div className="flex justify-end w-full mb-2">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="إغلاق البطاقة"
+              className="min-h-[44px] px-4 py-2 rounded-full bg-stone-100 hover:bg-red-50 active:bg-red-100 text-stone-800 hover:text-red-700 border border-stone-200/90 font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+              title="إغلاق البطاقة"
+            >
+              <span className="text-base leading-none font-black">✕</span>
+              <span>إغلاق</span>
+            </button>
+          </div>
         )}
 
         {/* Branch / Generation Tag */}
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
             style={{

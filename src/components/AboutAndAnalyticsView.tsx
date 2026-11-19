@@ -273,7 +273,7 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
           إحصائيات شجرة عائلة الفردان
         </h2>
         <p className="text-sm text-slate-600 leading-relaxed">
-          نظرة شاملة على أرقام الشجرة المباركة، وتوزيع أفرادها عبر {registry.stats.totalGenerations} جيلاً ابتداءً من الجد الأكبر الشيخ علي الكرزكاني، وتفرع ذرية عبد الحسين بن يوسف بن الشيخ علي إلى الفردان (والد الجدين محمد وحسين وذريتهما) وأيوب (والد فردان الذي يتفرع منه عبدالله وذريته).
+          نظرة شاملة على أرقام الشجرة المباركة، وتوزيع أفرادها عبر {registry.stats.totalGenerations} جيلاً ابتداءً من الجد الأكبر الشيخ علي الكرزكاني، وتفرع ذرية عبد الحسين بن يوسف بن الشيخ علي إلى فردان (والد الجدين محمد وحسين وذريتهما) وأيوب (والد فردان الذي يتفرع منه عبدالله وذريته).
         </p>
 
         {onOpenInteractiveTree && (
@@ -607,7 +607,7 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
         {/* Lineage 1: Mohammad bin Al-Fardan */}
         <div className="space-y-2.5 bg-emerald-50/40 border border-emerald-200/70 rounded-2xl p-4">
           <p className="text-xs font-bold text-emerald-900">
-            عمود نسب ذرية الجد محمد (محمد بن الفردان بن عبد الحسين بن يوسف بن الشيخ علي):
+            عمود نسب ذرية الجد محمد (محمد بن فردان بن عبد الحسين بن يوسف بن الشيخ علي):
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {mohammadTrunkPeople.map((person, idx) => (
@@ -629,7 +629,7 @@ export const AboutAndAnalyticsView: React.FC<AboutAndAnalyticsViewProps> = ({
         {/* Lineage 2: Hussain bin Al-Fardan */}
         <div className="space-y-2.5 bg-purple-50/40 border border-purple-200/70 rounded-2xl p-4">
           <p className="text-xs font-bold text-purple-900">
-            عمود نسب ذرية الجد حسين (حسين بن الفردان بن عبد الحسين بن يوسف بن الشيخ علي):
+            عمود نسب ذرية الجد حسين (حسين بن فردان بن عبد الحسين بن يوسف بن الشيخ علي):
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {hussainTrunkPeople.map((person, idx) => (

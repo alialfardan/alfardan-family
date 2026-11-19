@@ -12,7 +12,7 @@ export const DEFAULT_ARCHIVAL_PHOTOS: ArchivalPhoto[] = [
     category: 'documents',
     era: '1442 هـ / 2020 م (محققة عن الأصول)',
     location: 'كرزكان - مملكة البحرين',
-    notes: 'الوثيقة التاريخية الكبرى المحفوظة التي جمعت وحققت أسماء ذرية عائلة الفردان الكرزكاني ابتداءً من الجد الأكبر الشيخ علي، وتفرع ذرية عبد الحسين بن يوسف بن الشيخ علي إلى الفردان (الذي يتفرع منه ابنان هما: محمد وحسين وذريتهما) وأيوب (والد فردان الذي يتفرع منه عبدالله وذريته). خطها وحققها المرحوم الحاج كاظم بن إبراهيم بن علي الفردان، وتعد المرجع المعتمد الأول لنسب وتفرعات العائلة.',
+    notes: 'الوثيقة التاريخية الكبرى المحفوظة التي جمعت وحققت أسماء ذرية عائلة الفردان الكرزكاني ابتداءً من الجد الأكبر الشيخ علي، وتفرع ذرية عبد الحسين بن يوسف بن الشيخ علي إلى فردان (الذي يتفرع منه ابنان هما: محمد وحسين وذريتهما) وأيوب (والد فردان الذي يتفرع منه عبدالله وذريته). خطها وحققها المرحوم الحاج كاظم بن إبراهيم بن علي الفردان، وتعد المرجع المعتمد الأول لنسب وتفرعات العائلة.',
     taggedPersonKeys: ['ot0', 'ot2', 'am_mvzm8u6pyafp', 'oF', 'o4', 'o13', 'o15'],
     createdAt: 1609459200000,
     addedBy: 'إدارة شجرة آل فردان'
@@ -62,7 +62,7 @@ export const DEFAULT_NOTABLE_FIGURES: NotableFigure[] = [
     branch: 'ذرية محمد',
     birthDeath: 'توفي في 23 أغسطس 2020 م (رحمه الله)',
     era: 'العصر الحديث - كرزكان',
-    biography: 'المرحوم الحاج كاظم بن إبراهيم بن علي بن محمد بن الفردان (رحمه الله)، المؤرخ والنسّابة والخطاط الذي كرّس جهده ووقته لجمع وتحقيق وتدوين «مخطوطة شجرة نسب عائلة الفردان الكرزكاني الأصلية». قام رحمه الله بتتبع الأصول والروايات الموثقة عن كبار العائلة وأعيانها، وخطّ بيده المشجر الجامع الذي حفظ أنساب العائلة وفروعها الثلاثة الكبرى للأجيال الحاضرة والقادمة.',
+    biography: 'المرحوم الحاج كاظم بن إبراهيم بن علي بن محمد بن فردان (رحمه الله)، المؤرخ والنسّابة والخطاط الذي كرّس جهده ووقته لجمع وتحقيق وتدوين «مخطوطة شجرة نسب عائلة الفردان الكرزكاني الأصلية». قام رحمه الله بتتبع الأصول والروايات الموثقة عن كبار العائلة وأعيانها، وخطّ بيده المشجر الجامع الذي حفظ أنساب العائلة وفروعها الثلاثة الكبرى للأجيال الحاضرة والقادمة.',
     achievements: [
       'تحقيق ونسخ وتوثيق مخطوطة شجرة نسب عائلة الفردان الأصلية المعتمدة',
       'حفظ تسلسل الأجيال والربط التاريخي الدقيق بين فروع العائلة الثلاثة في كرزكان',
@@ -88,7 +88,7 @@ export const DEFAULT_NOTABLE_FIGURES: NotableFigure[] = [
     branch: 'ذرية محمد',
     birthDeath: 'من أعلام القرن الرابع عشر الهجري (رحمه الله)',
     era: 'الجيل الثامن - كرزكان',
-    biography: 'الملا علي بن محفوظ بن محسن بن محمد بن الفردان (رحمه الله)، من الخطباء والوجهاء المعروفين بالبيان وحسن الخلق وخدمة المجتمع في كرزكان. كان له حضور فاعل في المناسبات الدينية والاجتماعية وحفظ السيرة العطرة للآباء والأجداد.',
+    biography: 'الملا علي بن محفوظ بن محسن بن محمد بن فردان (رحمه الله)، من الخطباء والوجهاء المعروفين بالبيان وحسن الخلق وخدمة المجتمع في كرزكان. كان له حضور فاعل في المناسبات الدينية والاجتماعية وحفظ السيرة العطرة للآباء والأجداد.',
     achievements: [
       'من خطباء وأدباء عائلة الفردان في كرزكان',
       'حضور اجتماعي وثقافي مؤثر في خدمة الأهالي والمجالس العامرة'
@@ -498,7 +498,7 @@ function mergeTwoMemberRecords(existing: AddedMember, incoming: AddedMember, for
     ...older,
     ...newer,
     id: existing.id || incoming.id,
-    name: standardizeArabicSpelling(newer.name || older.name),
+    name: (existing.id || incoming.id) === 'm_mvzm8u6pyafp' ? 'فردان' : standardizeArabicSpelling(newer.name || older.name),
     gender: newer.gender || older.gender || 'm',
     parent: newer.parent || older.parent,
     del: isDel,
@@ -531,7 +531,7 @@ export function deduplicateMembers(members: AddedMember[], forceIncoming: boolea
     if (!rawM || !rawM.name) continue;
     const m: AddedMember = {
       ...rawM,
-      name: standardizeArabicSpelling(rawM.name),
+      name: rawM.id === 'm_mvzm8u6pyafp' ? 'فردان' : standardizeArabicSpelling(rawM.name),
       at: normalizeTimestamp(rawM.at) || BASELINE_SAFE_TS - 1000
     };
     if (m.id && byIdMap.has(m.id)) {
@@ -1120,7 +1120,7 @@ export function buildFamilyRegistry(state: FamilyState): FamilyTreeProcessed {
   deduplicateMembers(state.members || []).forEach(m => {
     const key = 'a' + m.id;
     const isAlFardanFounder = m.id === 'm_mvzm8u6pyafp';
-    const resolvedName = isAlFardanFounder ? 'الفردان' : m.name;
+    const resolvedName = isAlFardanFounder ? 'فردان' : m.name;
     const resolvedParent = isAlFardanFounder ? 'ot2' : m.parent;
     const computedYear = m.year !== undefined ? m.year : (m.birthDate ? parseYearFromDate(m.birthDate) : null);
     const computedBirthDate = m.birthDate ?? (computedYear ? String(computedYear) : null);
@@ -1424,7 +1424,7 @@ export function getFullLineageChain(key: string, registry: Map<string, Processed
   return chain;
 }
 
-// Compute primary Arabic lineage chain ending at "الفردان" (for Al-Fardan descendants)
+// Compute primary Arabic lineage chain ending at "فردان" (for Fardan bin Abdulhussain descendants)
 // or "أيوب" (for Ayoub descendants), stopping before the 3 founding historical roots ('ot2', 'ot1', 'ot0'),
 // except when inspecting one of the 3 founding ancestors themselves.
 export function getLineageChain(key: string, registry: Map<string, ProcessedPerson>): ProcessedPerson[] {
@@ -1448,7 +1448,7 @@ export function formatLineageString(key: string, registry: Map<string, Processed
 }
 
 // Unified primary lineage string across all dropdowns, directory cards, certificates, and sections:
-// Always returns the complete primary lineage ending with "الفردان" or "أيوب" (or natural root name for ot0/ot1/ot2).
+// Always returns the complete primary lineage ending with "فردان" or "أيوب" (or natural root name for ot0/ot1/ot2).
 export function getQuadLineageName(
   key: string,
   registry: Map<string, ProcessedPerson>,

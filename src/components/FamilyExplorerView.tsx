@@ -607,10 +607,10 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
 
             <div>
               <h2 className="text-2xl sm:text-3xl font-extrabold font-['Alexandria'] text-slate-900">
-                ذرية الجد الأكبر الشيخ علي الكرزكاني
+                ذرية الجد الأكبر الشيخ علي
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed max-w-xl mx-auto">
-                يتفرع من <strong>عبد الحسين بن يوسف بن الشيخ علي</strong> كلٌ من: <strong>الجد الفردان</strong> (والد الجدين محمد وحسين وذريتهما) و<strong>الجد أيوب</strong> (والد الجد فردان الذي يتفرع منه عبدالله وذريته)
+                يتفرع من <strong>عبد الحسين بن يوسف بن الشيخ علي</strong> كلٌ من: <strong>الجد فردان</strong> (والد الجدين محمد وحسين وذريتهما) و<strong>الجد أيوب</strong> (والد الجد فردان الذي يتفرع منه عبدالله وذريته)
               </p>
             </div>
 
@@ -624,7 +624,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-emerald-800 to-slate-900 hover:from-emerald-900 hover:to-black text-white text-sm font-bold rounded-2xl shadow-xl transition-all transform active:scale-98 cursor-pointer"
               >
                 <Users className="w-4 h-4 text-amber-400" />
-                <span>ذرية الجد الفردان (فرعا محمد وحسين)</span>
+                <span>ذرية الجد فردان (فرعا محمد وحسين)</span>
                 <ChevronLeft className="w-4 h-4" />
               </button>
 
@@ -713,7 +713,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               <span>سلسلة الأجداد التأسيسية</span>
             </h3>
             <p className="text-xs text-slate-500">
-              تسلسل الآباء والأجداد من الجد المؤسس الشيخ علي الكرزكاني وتفرع ذرية عبد الحسين إلى الفردان وأيوب:
+              تسلسل الآباء والأجداد من الجد المؤسس الشيخ علي الكرزكاني وتفرع ذرية عبد الحسين إلى فردان وأيوب:
             </p>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">

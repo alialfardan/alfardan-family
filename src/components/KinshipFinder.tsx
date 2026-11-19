@@ -400,19 +400,19 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
               onClick={() => handlePreset('o4', 'o15')}
               className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors cursor-pointer"
             >
-              محمد بن الفردان ↔ حسين بن الفردان
+              محمد بن فردان ↔ حسين بن فردان
             </button>
             <button
               onClick={() => handlePreset('o4', 'o13')}
               className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors cursor-pointer"
             >
-              محمد بن الفردان ↔ عبدالله بن فردان
+              محمد بن فردان ↔ عبدالله بن فردان
             </button>
             <button
               onClick={() => handlePreset('o17', 'o4')}
               className="px-2.5 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors cursor-pointer"
             >
-              محفوظ بن محسن ↔ محمد بن الفردان
+              محفوظ بن محسن ↔ محمد بن فردان
             </button>
           </div>
         </div>

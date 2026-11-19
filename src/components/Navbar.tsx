@@ -202,7 +202,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 </div>
               ) : (
-                /* Visitor Admin Access Lock Button - Always Clearly Visible & Clickable */
+                /* Visitor Admin Access Lock Button */
                 <button
                   onClick={onOpenAuthModal}
                   className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 rounded-xl border border-slate-200 hover:border-emerald-300 transition-all text-xs sm:text-sm font-bold flex-shrink-0 shadow-2xs active:scale-95 cursor-pointer"

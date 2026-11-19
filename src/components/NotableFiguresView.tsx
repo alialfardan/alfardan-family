@@ -961,7 +961,7 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                     type="text"
                     value={personSearchQuery}
                     onChange={(e) => setPersonSearchQuery(e.target.value)}
-                    placeholder="اكتب اسم الفرد للبحث في الشجرة (مثال: كاظم، ملا حسين، الفردان...)"
+                    placeholder="اكتب اسم الفرد للبحث في الشجرة (مثال: كاظم، ملا حسين، فردان...)"
                     className="w-full px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600"
                   />
                   {matchingTreePeople.length > 0 && (
