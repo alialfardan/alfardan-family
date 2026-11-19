@@ -16,6 +16,7 @@ interface TreeCanvasProps {
   registry: FamilyTreeProcessed;
   selectedKey: string;
   onSelectPerson: (key: string, opts?: { reveal?: boolean; center?: boolean }) => void;
+  onClearSelection?: () => void;
   onAddChild: (parentKey: string, defaultGender?: 'm' | 'f') => void;
   expandedKeys: Set<string>;
   onToggleExpand: (key: string) => void;
@@ -97,6 +98,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   registry,
   selectedKey,
   onSelectPerson,
+  onClearSelection,
   onAddChild,
   expandedKeys,
   onToggleExpand,
@@ -110,6 +112,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const zoomGRef = useRef<SVGGElement | null>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
 
   const [currentZoom, setCurrentZoom] = useState<number>(0.85);
   // Track manually collapsed sons/daughters group sections
@@ -150,6 +153,20 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   const handleSelectFromQuickSearch = (key: string) => {
     setQuickSearchQuery('');
     setIsQuickSearchOpen(false);
+    // Ensure any manually collapsed Sons/Daughters group along this person's ancestors is expanded
+    setCollapsedGroupKeys(prev => {
+      if (prev.size === 0) return prev;
+      const next = new Set(prev);
+      let cur = registry.people.get(key);
+      let guard = 0;
+      while (cur && guard++ < 100) {
+        if (!cur.parentKey) break;
+        next.delete(`group_sons_${cur.parentKey}`);
+        next.delete(`group_daughters_${cur.parentKey}`);
+        cur = registry.people.get(cur.parentKey);
+      }
+      return next;
+    });
     onSelectPerson(key, { reveal: true, center: true });
   };
 
@@ -289,6 +306,75 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     };
   }, [hierarchyData]);
 
+  // Compute sequential upward ancestor lineage (from selected person up to Sheikh Ali / root)
+  const { ancestorPersonKeys, ancestorD3Nodes, hasActiveLineage } = useMemo(() => {
+    const personKeys = new Set<string>();
+    const orderedChainKeys: string[] = [];
+
+    if (selectedKey) {
+      let cur = registry.people.get(selectedKey);
+      let guard = 0;
+      while (cur && guard++ < 100 && !personKeys.has(cur.key)) {
+        personKeys.add(cur.key);
+        orderedChainKeys.push(cur.key);
+        if (!cur.parentKey) break;
+        cur = registry.people.get(cur.parentKey);
+      }
+    }
+
+    const d3NodesSet = new Set<d3.HierarchyPointNode<any>>();
+    if (orderedChainKeys.length > 0 && nodes.length > 0) {
+      let deepestVisibleNode: d3.HierarchyPointNode<any> | undefined;
+      for (const k of orderedChainKeys) {
+        deepestVisibleNode = nodes.find(n => !n.data.isGroup && n.data.key === k);
+        if (deepestVisibleNode) break;
+      }
+      if (deepestVisibleNode) {
+        for (const anc of deepestVisibleNode.ancestors()) {
+          d3NodesSet.add(anc);
+        }
+      }
+    }
+
+    return {
+      ancestorPersonKeys: personKeys,
+      ancestorD3Nodes: d3NodesSet,
+      hasActiveLineage: personKeys.size > 0 && d3NodesSet.size > 0,
+    };
+  }, [selectedKey, registry, nodes]);
+
+  // Layer links and nodes so the active black lineage path always renders cleanly on top
+  const { regularLinks, lineageLinks, regularNodes, lineageNodes } = useMemo(() => {
+    const regLinks: d3.HierarchyLink<any>[] = [];
+    const linLinks: d3.HierarchyLink<any>[] = [];
+    for (const link of links) {
+      if (ancestorD3Nodes.has(link.source) && ancestorD3Nodes.has(link.target)) {
+        linLinks.push(link);
+      } else {
+        regLinks.push(link);
+      }
+    }
+
+    const regNodes: d3.HierarchyPointNode<any>[] = [];
+    const linNodes: d3.HierarchyPointNode<any>[] = [];
+    for (const node of nodes) {
+      const isNodeOnLineage =
+        ancestorD3Nodes.has(node) || (!node.data.isGroup && ancestorPersonKeys.has(node.data.key));
+      if (isNodeOnLineage) {
+        linNodes.push(node);
+      } else {
+        regNodes.push(node);
+      }
+    }
+
+    return {
+      regularLinks: regLinks,
+      lineageLinks: linLinks,
+      regularNodes: regNodes,
+      lineageNodes: linNodes,
+    };
+  }, [links, nodes, ancestorD3Nodes, ancestorPersonKeys]);
+
   // Initialize D3 Zoom
   useEffect(() => {
     if (!svgRef.current || !zoomGRef.current) return;
@@ -394,6 +480,17 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
       <svg
         ref={svgRef}
         className="w-full h-full cursor-grab active:cursor-grabbing"
+        onPointerDown={(e) => {
+          pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+        }}
+        onClick={(e) => {
+          if (e.target !== svgRef.current || !onClearSelection || !selectedKey) return;
+          const start = pointerDownPosRef.current;
+          if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 6) {
+            return;
+          }
+          onClearSelection();
+        }}
       >
         <defs>
           <clipPath id="avatar-clip">
@@ -405,40 +502,55 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
           <filter id="card-shadow-active" x="-15%" y="-15%" width="130%" height="140%">
             <feDropShadow dx="0" dy="4" stdDeviation="6" floodColor="#059669" floodOpacity="0.25" />
           </filter>
+          <filter id="card-shadow-lineage" x="-15%" y="-20%" width="130%" height="150%">
+            <feDropShadow dx="0" dy="3" stdDeviation="4.5" floodColor="#000000" floodOpacity="0.28" />
+          </filter>
         </defs>
 
         <g ref={zoomGRef}>
-          {/* Links */}
+          {/* Links: non-lineage links first, active black lineage path links on top */}
           <g className="links">
-            {links.map((link, idx) => {
-              const isSelectedPath = link.target.data.key === selectedKey || link.source.data.key === selectedKey;
-              const branchInfo = BRANCH_COLORS[link.target.data.branch] || BRANCH_COLORS.b0;
-
-              const isDaughterPath = (link.target.data.isGroup && link.target.data.groupType === 'daughters') ||
-                                     (link.source.data.isGroup && link.source.data.groupType === 'daughters') ||
-                                     (link.target.data.gender === 'f');
-
+            {regularLinks.map((link, idx) => (
+              <path
+                key={`link-reg-${link.source.data.key}-${link.target.data.key}-${idx}`}
+                d={generateLinkPath(link)}
+                fill="none"
+                stroke="#cbd5e1"
+                strokeWidth={1.5}
+                className="transition-all duration-200"
+              />
+            ))}
+            {lineageLinks.map((link, idx) => {
+              const d = generateLinkPath(link);
               return (
-                <path
-                  key={`link-${link.source.data.key}-${link.target.data.key}-${idx}`}
-                  d={generateLinkPath(link)}
-                  fill="none"
-                  stroke={
-                    isSelectedPath
-                      ? branchInfo.accent
-                      : '#cbd5e1'
-                  }
-                  strokeWidth={isSelectedPath ? 2.5 : 1.5}
-                  className="transition-colors duration-200"
-                />
+                <g key={`link-lineage-${link.source.data.key}-${link.target.data.key}-${idx}`}>
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="#f4f6f1"
+                    strokeOpacity={0.92}
+                    strokeWidth={6.5}
+                    strokeLinecap="round"
+                  />
+                  <path
+                    d={d}
+                    fill="none"
+                    stroke="#000000"
+                    strokeWidth={4}
+                    strokeLinecap="round"
+                    className="transition-all duration-200"
+                  />
+                </g>
               );
             })}
           </g>
 
-          {/* Nodes */}
+          {/* Nodes: unrelated nodes first, active black lineage path nodes on top */}
           <g className="nodes">
-            {nodes.map(node => {
+            {[...regularNodes, ...lineageNodes].map(node => {
               const isGroupNode = !!node.data.isGroup;
+              const isNodeOnLineage =
+                ancestorD3Nodes.has(node) || (!isGroupNode && ancestorPersonKeys.has(node.data.key));
 
               // SECTION CARD (الأبناء / البنات)
               if (isGroupNode) {
@@ -455,7 +567,10 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                     key={`group-node-${group.key}`}
                     transform={`translate(${posX}, ${posY})`}
                     className="cursor-pointer group"
-                    onClick={() => handleToggleGroup(group.key)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleGroup(group.key);
+                    }}
                   >
                     {/* Background card */}
                     <rect
@@ -465,9 +580,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                       height={cardHeight}
                       rx={12}
                       fill={isSons ? '#f0fdf4' : '#fff1f2'}
-                      stroke={isSons ? '#10b981' : '#f43f5e'}
-                      strokeWidth={1.8}
-                      filter="url(#card-shadow)"
+                      stroke={isNodeOnLineage ? '#000000' : isSons ? '#10b981' : '#f43f5e'}
+                      strokeWidth={isNodeOnLineage ? 2.8 : 1.8}
+                      filter={isNodeOnLineage ? 'url(#card-shadow-lineage)' : 'url(#card-shadow)'}
                       className="transition-all duration-200 group-hover:scale-[1.02]"
                     />
 
@@ -548,9 +663,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                         cx="0"
                         cy="0"
                         r="9"
-                        fill={isExpanded ? (isSons ? '#065f46' : '#881337') : '#ffffff'}
-                        stroke={isSons ? '#10b981' : '#f43f5e'}
-                        strokeWidth="1.5"
+                        fill={isExpanded ? (isNodeOnLineage ? '#09090b' : isSons ? '#065f46' : '#881337') : '#ffffff'}
+                        stroke={isNodeOnLineage ? '#000000' : isSons ? '#10b981' : '#f43f5e'}
+                        strokeWidth={isNodeOnLineage ? '1.8' : '1.5'}
                       />
                       <text
                         x="0"
@@ -597,6 +712,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               // REGULAR PERSON NODE
               const person: ProcessedPerson = node.data;
               const isSelected = person.key === selectedKey;
+              const isAncestorOnPath = isNodeOnLineage && !isSelected;
               const branchInfo = BRANCH_COLORS[person.branch] || BRANCH_COLORS.b0;
               const isFardan = person.key === registry.fardanKey;
               const isFemale = person.gender === 'f';
@@ -620,8 +736,26 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                   key={`node-${person.key}`}
                   transform={`translate(${posX}, ${posY})`}
                   className="cursor-pointer group"
-                  onClick={() => onSelectPerson(person.key, { reveal: true })}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectPerson(person.key, { reveal: true });
+                  }}
                 >
+                  {/* Subtle outer black ring for nodes on the active ancestral lineage path */}
+                  {isNodeOnLineage && (
+                    <rect
+                      x={-cardWidth / 2 - 3.5}
+                      y={-cardHeight / 2 - 3.5}
+                      width={cardWidth + 7}
+                      height={cardHeight + 7}
+                      rx={17}
+                      fill="none"
+                      stroke="#000000"
+                      strokeWidth={isSelected ? 1.8 : 1.4}
+                      strokeOpacity={isSelected ? 0.35 : 0.25}
+                    />
+                  )}
+
                   {/* Card Background */}
                   <rect
                     x={-cardWidth / 2}
@@ -629,17 +763,19 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                     width={cardWidth}
                     height={cardHeight}
                     rx={14}
-                    fill={isSelected ? '#121714' : '#ffffff'}
+                    fill={isSelected ? '#09090b' : '#ffffff'}
                     stroke={
-                      isSelected
-                        ? branchInfo.accent
+                      isNodeOnLineage
+                        ? '#000000'
                         : isFardan
                         ? '#d97706'
                         : '#e2e8f0'
                     }
-                    strokeWidth={isSelected ? 2.5 : isFardan ? 2 : 1}
-                    filter={isSelected ? 'url(#card-shadow-active)' : 'url(#card-shadow)'}
-                    className="transition-all duration-200 group-hover:stroke-[#059669]"
+                    strokeWidth={isSelected ? 3.2 : isAncestorOnPath ? 3 : isFardan ? 2 : 1}
+                    filter={isNodeOnLineage ? 'url(#card-shadow-lineage)' : 'url(#card-shadow)'}
+                    className={`transition-all duration-200 ${
+                      isNodeOnLineage ? '' : 'group-hover:stroke-[#059669]'
+                    }`}
                   />
 
                   {/* Branch / Gender Color Accent Stripe (Right edge in RTL) */}
@@ -707,9 +843,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                           y={subtitle ? -5 : 1}
                           textAnchor="start"
                           dominantBaseline="central"
-                          fill={isSelected ? '#ffffff' : '#121714'}
+                          fill={isSelected ? '#ffffff' : isAncestorOnPath ? '#000000' : '#121714'}
                           fontSize="13"
-                          fontWeight={isSelected || isFardan ? '700' : '600'}
+                          fontWeight={isNodeOnLineage || isFardan ? '700' : '600'}
                           className="font-['Readex_Pro']"
                           direction="rtl"
                         >
@@ -723,8 +859,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                             y={9}
                             textAnchor="start"
                             dominantBaseline="central"
-                            fill={isSelected ? '#9ca3af' : '#64748b'}
+                            fill={isSelected ? '#d4d4d8' : isAncestorOnPath ? '#334155' : '#64748b'}
                             fontSize="9.5"
+                            fontWeight={isAncestorOnPath ? '600' : '400'}
                             className="font-['Readex_Pro']"
                             direction="rtl"
                           >
@@ -774,9 +911,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                         cx="0"
                         cy="0"
                         r="11"
-                        fill={isExpanded ? '#121714' : '#ffffff'}
-                        stroke={isSelected ? branchInfo.accent : isFemale ? '#fb7185' : '#94a3b8'}
-                        strokeWidth="1.5"
+                        fill={isExpanded ? (isNodeOnLineage ? '#000000' : '#121714') : '#ffffff'}
+                        stroke={isNodeOnLineage ? '#000000' : isFemale ? '#fb7185' : '#94a3b8'}
+                        strokeWidth={isNodeOnLineage ? '2' : '1.5'}
                       />
                       <text
                         x="0"
@@ -981,13 +1118,24 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
         <div className="w-[1px] h-5 sm:h-6 bg-slate-200 mx-0.5 sm:mx-1" />
 
         <button
-          onClick={() => centerOnKey(selectedKey)}
+          onClick={() => centerOnKey(selectedKey || registry.fardanKey)}
           title="الانتقال إلى الشخص المحدد"
           className="flex items-center gap-1 px-2 py-1.5 hover:bg-slate-100 active:bg-slate-200 rounded-xl text-xs font-semibold transition-colors"
         >
           <Target className="w-4 h-4 text-emerald-600" />
           <span className="hidden sm:inline">المحدد</span>
         </button>
+
+        {selectedKey && onClearSelection && (
+          <button
+            onClick={onClearSelection}
+            title="إلغاء تحديد الفرد وإزالة تمييز المسار"
+            className="flex items-center gap-1 px-2 py-1.5 hover:bg-slate-100 active:bg-slate-200 rounded-xl text-xs font-semibold text-zinc-900 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4 text-zinc-900" />
+            <span className="hidden sm:inline">إلغاء التحديد</span>
+          </button>
+        )}
 
         <button
           onClick={handleResetToFardan}

@@ -614,6 +614,12 @@ export default function App() {
     }
   }, [registry]);
 
+  // Clear active tree selection
+  const handleClearSelection = useCallback(() => {
+    setSelectedKey('');
+    setIsDrawerOpen(false);
+  }, []);
+
   // Toggle node expansion
   const handleToggleExpand = useCallback((key: string) => {
     setExpandedKeys(prev => {
@@ -1968,6 +1974,7 @@ export default function App() {
               registry={registry}
               selectedKey={selectedKey}
               onSelectPerson={handleSelectPerson}
+              onClearSelection={handleClearSelection}
               onAddChild={(parentKey, defaultGender) =>
                 setAddEditModal({ isOpen: true, mode: 'add', targetKey: parentKey, defaultGender })
               }

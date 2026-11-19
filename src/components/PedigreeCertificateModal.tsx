@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
 import { getLineageChain, getQuadLineageName, searchFamilyMembers, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle, isHistoricalRootPerson, formatLineageString } from '../data/treeManager';
-import { Printer, Award, X, Search, Shield, Type, Check, Space, Sparkles } from 'lucide-react';
+import { Printer, Award, X, Search, Shield, Type, Check, Space, Sparkles, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import html2canvas from 'html2canvas-pro';
+import { jsPDF } from 'jspdf';
 
 interface PedigreeCertificateModalProps {
   isOpen: boolean;
@@ -63,6 +65,9 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
   const [selectedFontId, setSelectedFontId] = useState<string>('noto');
   const [nameSize, setNameSize] = useState<NameSizeLevel>('large');
   const [wordSpacingLevel, setWordSpacingLevel] = useState<WordSpacingLevel>('wide');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const certificateRef = useRef<HTMLDivElement | null>(null);
 
   if (!isOpen) return null;
 
@@ -73,15 +78,107 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
 
   const currentFont = CERTIFICATE_FONTS.find(f => f.id === selectedFontId) || CERTIFICATE_FONTS[0];
 
-  const handlePrint = () => {
-    confetti({
-      particleCount: 50,
-      spread: 70,
-      origin: { y: 0.6 }
-    });
-    setTimeout(() => {
-      window.print();
-    }, 200);
+  const handleDownloadPdf = async () => {
+    const element = certificateRef.current || document.getElementById('certificate-content');
+    if (!element || isGeneratingPdf) return;
+
+    setIsGeneratingPdf(true);
+    setPdfError(null);
+
+    try {
+      // Wait for Arabic web fonts to finish loading
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+
+      // Ensure all images inside the certificate (emblem, watermark) are loaded
+      const imgs = Array.from(element.querySelectorAll('img'));
+      await Promise.all(
+        imgs.map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise<void>((resolve) => {
+            const onDone = () => {
+              img.removeEventListener('load', onDone);
+              img.removeEventListener('error', onDone);
+              resolve();
+            };
+            img.addEventListener('load', onDone);
+            img.addEventListener('error', onDone);
+            setTimeout(onDone, 3000);
+          });
+        })
+      );
+
+      // Give the browser a frame to settle layout
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+      const canvas = await html2canvas(element, {
+        scale: 2.5,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#fffdf9',
+        logging: false,
+        windowWidth: 1024,
+        onclone: (clonedDoc) => {
+          const clonedEl = clonedDoc.getElementById('certificate-content');
+          if (clonedEl) {
+            clonedEl.style.width = '794px';
+            clonedEl.style.maxWidth = '794px';
+            clonedEl.style.padding = '36px';
+            clonedEl.style.margin = '0';
+            clonedEl.style.direction = 'rtl';
+            // Keep Arabic cursive letters connected when rendered onto canvas
+            const textEls = clonedEl.querySelectorAll('h2, h3, p, span');
+            textEls.forEach((node) => {
+              const el = node as HTMLElement;
+              if (!el.classList.contains('font-mono')) {
+                el.style.letterSpacing = 'normal';
+              }
+            });
+          }
+        },
+      });
+
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+        compress: true,
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+
+      const imgAspect = canvas.width / canvas.height;
+      let renderWidth = maxWidth;
+      let renderHeight = renderWidth / imgAspect;
+
+      if (renderHeight > maxHeight) {
+        renderHeight = maxHeight;
+        renderWidth = renderHeight * imgAspect;
+      }
+
+      const offsetX = (pageWidth - renderWidth) / 2;
+      const offsetY = (pageHeight - renderHeight) / 2;
+
+      const imgData = canvas.toDataURL('image/png', 1.0);
+      pdf.addImage(imgData, 'PNG', offsetX, offsetY, renderWidth, renderHeight, undefined, 'FAST');
+      pdf.save('وثيقة-نسب-عائلة-الفردان.pdf');
+
+      confetti({
+        particleCount: 50,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    } catch (err) {
+      console.error('PDF generation failed:', err);
+      setPdfError('تعذر إنشاء ملف PDF، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   // Search candidates
@@ -138,11 +235,24 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 min-h-[44px] px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 active:scale-95 text-white rounded-full text-xs font-bold shadow-md transition-all cursor-pointer"
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              className={`flex items-center gap-1.5 min-h-[44px] px-4 py-2 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white rounded-full text-xs font-bold shadow-md transition-all ${
+                isGeneratingPdf ? 'opacity-80 cursor-wait' : 'active:scale-95 cursor-pointer'
+              }`}
             >
-              <Printer className="w-4 h-4" />
-              <span>طباعة / حفظ PDF</span>
+              {isGeneratingPdf ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>جاري تجهيز ملف PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Printer className="w-4 h-4" />
+                  <span>طباعة / حفظ PDF</span>
+                </>
+              )}
             </button>
             <button
               type="button"
@@ -263,8 +373,19 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
           </div>
         </div>
 
+        {pdfError && (
+          <div className="print:hidden px-4 sm:px-6 py-2 bg-red-50 border-b border-red-200 text-red-700 text-xs font-medium text-center">
+            {pdfError}
+          </div>
+        )}
+
         {/* The Printable Certificate Area */}
-        <div className="p-4 sm:p-10 bg-[#fffdf9] print:p-6 print:m-0">
+        <div
+          id="certificate-content"
+          ref={certificateRef}
+          dir="rtl"
+          className="p-4 sm:p-10 bg-[#fffdf9] print:p-6 print:m-0"
+        >
           <div className="relative border-8 border-double border-amber-700/70 rounded-3xl p-6 sm:p-12 text-center space-y-6 shadow-inner bg-gradient-to-b from-[#fffcf7] via-[#fffbf2] to-[#fff8eb]">
             {/* Watermark / Logo background */}
             <div className="absolute inset-0 flex items-center justify-center opacity-4 pointer-events-none">
