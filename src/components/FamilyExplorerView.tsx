@@ -15,7 +15,6 @@ import {
   Plus,
   Award,
   Sparkles,
-  BookOpen,
   Calendar,
   Home,
   Copy,
@@ -141,10 +140,6 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
   // Active person
   const personKeyToUse = currentPersonKey === 'home' ? registry.fardanKey : currentPersonKey;
   const currentPerson = registry.people.get(personKeyToUse) || registry.people.get(registry.fardanKey)!;
-
-  // Patriarchs / Founders
-  const fardan = registry.people.get(registry.fardanKey);
-  const sheikhAli = registry.people.get(registry.rootKey);
 
   // Scroll to Top state & helper
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -703,37 +698,6 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
                   </button>
                 );
               })}
-            </div>
-          </div>
-
-          {/* Silsilat Al-Ajdad (Founders) */}
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-4">
-            <h3 className="text-base font-bold font-['Alexandria'] text-slate-900 flex items-center gap-2">
-              <BookOpen className="w-4 h-4 text-amber-600" />
-              <span>سلسلة الأجداد التأسيسية</span>
-            </h3>
-            <p className="text-xs text-slate-500">
-              تسلسل الآباء والأجداد من الجد المؤسس الشيخ علي الكرزكاني وتفرع ذرية عبد الحسين إلى فردان وأيوب:
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              {[
-                sheikhAli,
-                registry.people.get('ot1'),
-                registry.people.get('ot2'),
-                registry.people.get('am_mvzm8u6pyafp'),
-                registry.people.get('ot3'),
-                fardan
-              ].filter(Boolean).map((anc) => (
-                <button
-                  key={`anc-${anc!.key}`}
-                  onClick={() => handleOpenPerson(anc!.key)}
-                  className="px-3.5 py-2 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-xl text-xs font-bold text-slate-800 transition-colors flex items-center gap-1.5"
-                >
-                  <span>{anc!.name}</span>
-                  <span className="text-[10px] text-slate-400">({anc!.childrenKeys.length} أبناء)</span>
-                </button>
-              ))}
             </div>
           </div>
 
