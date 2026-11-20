@@ -16,7 +16,8 @@ import {
   loadCustomAvatarsBackup,
   saveTreeToDisk,
   uploadMemberAvatarToDisk,
-  deleteMemberAvatarFromDisk
+  deleteMemberAvatarFromDisk,
+  resolveMainFardanKey
 } from './data/treeManager';
 import { unregisterServiceWorkersAndClearCaches } from './pwa/registerServiceWorker';
 import { getDefaultAvatarDataUri, markAvatarUrlFailed, clearFailedAvatarUrl } from './components/MemberAvatar';
@@ -398,22 +399,27 @@ export default function App() {
     return buildFamilyRegistry(familyState);
   }, [familyState]);
 
+  // Primary founding Fardan (son of Abdulhussain ot2, father of Mohammad o4 & Hussain o15)
+  const mainFardanKey = useMemo(() => {
+    return resolveMainFardanKey(registry.people);
+  }, [registry.people]);
+
   // Navigation State - defaults to 'home'
   const [currentTab, setCurrentTab] = useState<ActiveTab>('home');
   const [explorerPersonKey, setExplorerPersonKey] = useState<string>('home');
 
-  // Selected Person State
-  const [selectedKey, setSelectedKey] = useState<string>('oF'); // Fardan
+  // Selected Person State - defaults to Fardan (son of Abdulhussain, father of Mohammad & Hussain)
+  const [selectedKey, setSelectedKey] = useState<string>(() => resolveMainFardanKey(registry.people));
   const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
 
   // Tree Expansion State (Keys of nodes that are expanded)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => {
     const initialSet = new Set<string>();
-    // Expand root path down to Al-Fardan, Fardan bin Ayoub, and direct heads
+    // Expand root path down to Grandfather Fardan (am_mvzm8u6pyafp) so his ancestors and sons (Mohammad & Hussain) are visible
     initialSet.add('ot0');
     initialSet.add('ot1');
     initialSet.add('ot2');
-    initialSet.add('am_mvzm8u6pyafp');
+    initialSet.add(resolveMainFardanKey(registry.people));
     initialSet.add('ot3');
     initialSet.add('oF');
     return initialSet;
@@ -546,7 +552,7 @@ export default function App() {
     setIsFamilyMember(false);
     setSelectedKey(prevKey => {
       const p = registry.people.get(prevKey);
-      return p?.gender === 'f' ? registry.fardanKey : prevKey;
+      return p?.gender === 'f' ? mainFardanKey : prevKey;
     });
     setExplorerPersonKey(prevKey => {
       if (prevKey === 'home') return 'home';
@@ -554,7 +560,7 @@ export default function App() {
       return p?.gender === 'f' ? registry.fardanKey : prevKey;
     });
     showToast('تم قفل وضع العائلة والعودة إلى وضع الزوار العام 🔒', 'info');
-  }, [registry, showToast]);
+  }, [registry, mainFardanKey, showToast]);
 
   // Real-time Cloud Notifications Listener (Dual-path: SW system alert + In-App Toast)
   useEffect(() => {
@@ -581,12 +587,24 @@ export default function App() {
   }, []);
 
   // Tab switch handler: When entering the interactive tree, ensure the detail drawer is closed
+  // and ensure a valid default Fardan selection + visible ancestor/children expansion if cleared
   const handleTabChange = useCallback((tab: ActiveTab) => {
     setCurrentTab(tab);
     if (tab === 'tree') {
       setIsDrawerOpen(false);
+      if (!selectedKey) {
+        setSelectedKey(mainFardanKey);
+        setExpandedKeys(prev => {
+          const next = new Set(prev);
+          next.add('ot0');
+          next.add('ot1');
+          next.add('ot2');
+          next.add(mainFardanKey);
+          return next;
+        });
+      }
     }
-  }, []);
+  }, [selectedKey, mainFardanKey]);
 
   // Selection handler with auto-reveal parent nodes
   const handleSelectPerson = useCallback((key: string, opts?: { reveal?: boolean; center?: boolean; openDrawer?: boolean }) => {
@@ -647,11 +665,11 @@ export default function App() {
 
   // Collapse All to Founding Trunk
   const handleCollapseAll = useCallback(() => {
-    const basicSet = new Set<string>(['ot0', 'ot1', 'ot2', 'am_mvzm8u6pyafp', 'ot3', 'oF']);
+    const basicSet = new Set<string>(['ot0', 'ot1', 'ot2', mainFardanKey, 'ot3', 'oF']);
     setExpandedKeys(basicSet);
-    setSelectedKey('oF');
+    setSelectedKey(mainFardanKey);
     showToast('تم طي الشجرة للوضع التأسيسي', 'info');
-  }, [showToast]);
+  }, [mainFardanKey, showToast]);
 
   // Helper to immediately and permanently anchor state across disk (initialTreeData.json), localStorage, Firestore, and live server
   const persistAndSyncImmediately = useCallback((
@@ -1868,7 +1886,7 @@ export default function App() {
   // Reset to default
   const handleResetToDefaults = () => {
     setFamilyState(DEFAULT_FAMILY_DATA);
-    setSelectedKey('oF');
+    setSelectedKey(mainFardanKey);
     showToast('تمت إعادة ضبط الشجرة على الوثيقة الأصلية');
   };
 
@@ -1880,7 +1898,7 @@ export default function App() {
         onTabChange={handleTabChange}
         registry={registry}
         onSelectPerson={handleSelectPerson}
-        onOpenAddModal={() => setAddEditModal({ isOpen: true, mode: 'add', targetKey: selectedKey || registry.fardanKey })}
+        onOpenAddModal={() => setAddEditModal({ isOpen: true, mode: 'add', targetKey: selectedKey || mainFardanKey })}
         onOpenBackupModal={() => setIsBackupModalOpen(true)}
         hasUnsavedChanges={hasUnsavedServerChanges}
         onShowToast={showToast}

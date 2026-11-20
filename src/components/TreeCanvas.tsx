@@ -7,7 +7,8 @@ import {
   searchFamilyMembers,
   getQuadLineageName,
   normalizeArabic,
-  getChildrenOfSpouse
+  getChildrenOfSpouse,
+  resolveMainFardanKey
 } from '../data/treeManager';
 import { ZoomIn, ZoomOut, RotateCcw, Target, Maximize2, Minimize2, Plus, Search, X } from 'lucide-react';
 import { MemberAvatar, sanitizeAvatarUrl, markAvatarUrlFailed } from './MemberAvatar';
@@ -15,7 +16,7 @@ import { MemberAvatar, sanitizeAvatarUrl, markAvatarUrlFailed } from './MemberAv
 interface TreeCanvasProps {
   registry: FamilyTreeProcessed;
   selectedKey: string;
-  onSelectPerson: (key: string, opts?: { reveal?: boolean; center?: boolean }) => void;
+  onSelectPerson: (key: string, opts?: { reveal?: boolean; center?: boolean; openDrawer?: boolean }) => void;
   onClearSelection?: () => void;
   onAddChild: (parentKey: string, defaultGender?: 'm' | 'f') => void;
   expandedKeys: Set<string>;
@@ -113,6 +114,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   const zoomGRef = useRef<SVGGElement | null>(null);
   const zoomBehaviorRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const pendingCenterKeyRef = useRef<{ key: string; scale?: number } | null>(null);
+
+  const defaultFardanKey = useMemo(() => resolveMainFardanKey(registry.people), [registry.people]);
 
   const [currentZoom, setCurrentZoom] = useState<number>(0.85);
   // Track manually collapsed sons/daughters group sections
@@ -375,27 +379,6 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     };
   }, [links, nodes, ancestorD3Nodes, ancestorPersonKeys]);
 
-  // Initialize D3 Zoom
-  useEffect(() => {
-    if (!svgRef.current || !zoomGRef.current) return;
-
-    const svg = d3.select(svgRef.current);
-    const g = d3.select(zoomGRef.current);
-
-    const zoom = d3.zoom<SVGSVGElement, unknown>()
-      .scaleExtent([0.15, 2.5])
-      .on('zoom', (event) => {
-        g.attr('transform', event.transform);
-        setCurrentZoom(event.transform.k);
-      });
-
-    zoomBehaviorRef.current = zoom;
-    svg.call(zoom).on('dblclick.zoom', null);
-
-    // Initial center on Fardan or selected person
-    centerOnKey(selectedKey || registry.fardanKey, 0.85);
-  }, []);
-
   // Center view on a specific person
   const centerOnKey = useCallback((targetKey: string, scale?: number) => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
@@ -421,6 +404,45 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     svg.transition().duration(550).ease(d3.easeCubicOut).call(zoomBehaviorRef.current.transform, transform);
   }, [nodes, currentZoom]);
 
+  // Complete any pending center request once revealed nodes appear in layout
+  useEffect(() => {
+    const pending = pendingCenterKeyRef.current;
+    if (!pending) return;
+    if (nodes.some(n => n.data.key === pending.key)) {
+      pendingCenterKeyRef.current = null;
+      centerOnKey(pending.key, pending.scale);
+    }
+  }, [nodes, centerOnKey]);
+
+  // Initialize D3 Zoom & center on selected person or primary Grandfather Fardan (am_mvzm8u6pyafp)
+  useEffect(() => {
+    if (!svgRef.current || !zoomGRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const g = d3.select(zoomGRef.current);
+
+    const zoom = d3.zoom<SVGSVGElement, unknown>()
+      .scaleExtent([0.15, 2.5])
+      .on('zoom', (event) => {
+        g.attr('transform', event.transform);
+        setCurrentZoom(event.transform.k);
+      });
+
+    zoomBehaviorRef.current = zoom;
+    svg.call(zoom).on('dblclick.zoom', null);
+
+    const initialTargetKey = selectedKey || defaultFardanKey;
+    if (!selectedKey) {
+      onSelectPerson(defaultFardanKey, { reveal: true, openDrawer: false });
+    }
+    if (nodes.some(n => n.data.key === initialTargetKey)) {
+      centerOnKey(initialTargetKey, 0.85);
+    } else {
+      onSelectPerson(initialTargetKey, { reveal: true, openDrawer: false });
+      pendingCenterKeyRef.current = { key: initialTargetKey, scale: 0.85 };
+    }
+  }, []);
+
   // Handle Zoom In
   const handleZoomIn = () => {
     if (!svgRef.current || !zoomBehaviorRef.current) return;
@@ -433,10 +455,14 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     d3.select(svgRef.current).transition().duration(250).call(zoomBehaviorRef.current.scaleBy, 1 / 1.3);
   };
 
-  // Handle Reset to Fardan
+  // Handle Reset to Grandfather Fardan (son of Abdulhussain, father of Mohammad & Hussain)
   const handleResetToFardan = () => {
-    centerOnKey(registry.fardanKey, 0.85);
-    onSelectPerson(registry.fardanKey);
+    onSelectPerson(defaultFardanKey, { reveal: true });
+    if (nodes.some(n => n.data.key === defaultFardanKey)) {
+      centerOnKey(defaultFardanKey, 0.85);
+    } else {
+      pendingCenterKeyRef.current = { key: defaultFardanKey, scale: 0.85 };
+    }
   };
 
   // Curve generator for connecting links (RTL: right to left)
@@ -714,7 +740,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               const isSelected = person.key === selectedKey;
               const isAncestorOnPath = isNodeOnLineage && !isSelected;
               const branchInfo = BRANCH_COLORS[person.branch] || BRANCH_COLORS.b0;
-              const isFardan = person.key === registry.fardanKey;
+              const isFardan = person.key === defaultFardanKey;
               const isFemale = person.gender === 'f';
               const visibleChildrenCount = isPrivacyRestricted
                 ? person.childrenKeys
@@ -1118,7 +1144,18 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
         <div className="w-[1px] h-5 sm:h-6 bg-slate-200 mx-0.5 sm:mx-1" />
 
         <button
-          onClick={() => centerOnKey(selectedKey || registry.fardanKey)}
+          onClick={() => {
+            const targetKey = selectedKey || defaultFardanKey;
+            if (!selectedKey) {
+              onSelectPerson(targetKey, { reveal: true, openDrawer: false });
+            }
+            if (nodes.some(n => n.data.key === targetKey)) {
+              centerOnKey(targetKey);
+            } else {
+              onSelectPerson(targetKey, { reveal: true, openDrawer: false });
+              pendingCenterKeyRef.current = { key: targetKey };
+            }
+          }}
           title="الانتقال إلى الشخص المحدد"
           className="flex items-center gap-1 px-2 py-1.5 hover:bg-slate-100 active:bg-slate-200 rounded-xl text-xs font-semibold transition-colors"
         >
@@ -1175,7 +1212,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
 
       {/* Quick Add floating action button for mobile - placed above canvas toolbar */}
       <button
-        onClick={() => onAddChild(selectedKey || registry.fardanKey)}
+        onClick={() => onAddChild(selectedKey || defaultFardanKey)}
         className="md:hidden absolute bottom-18 left-3 z-20 flex items-center justify-center w-11 h-11 bg-emerald-800 text-white rounded-full shadow-2xl active:scale-95 transition-transform"
         title="إضافة ابن أو ابنة"
       >

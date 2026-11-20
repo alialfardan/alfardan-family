@@ -1063,6 +1063,49 @@ export function parseYearFromDate(val: string | null | undefined): number | null
   return match ? parseInt(match[0], 10) : null;
 }
 
+/**
+ * Resolves the founding grandfather Fardan (son of Abdulhussain `ot2`,
+ * father of Mohammad `o4` and Hussain `o15`), explicitly excluding Fardan bin Ayoub (`oF`).
+ */
+export function resolveMainFardanKey(people: Map<string, ProcessedPerson>): string {
+  const direct = people.get('am_mvzm8u6pyafp');
+  if (direct && !direct.deleted && direct.key !== 'oF') {
+    return direct.key;
+  }
+
+  for (const person of people.values()) {
+    if (person.deleted || person.key === 'oF') continue;
+    const normName = normalizeArabic(person.name).trim();
+    if (normName !== 'فردان' && normName !== 'الفردان') continue;
+
+    const parent = person.parentKey ? people.get(person.parentKey) : undefined;
+    const normParent = parent ? normalizeArabic(parent.name).trim() : '';
+    const isChildOfAbdulhussain =
+      person.parentKey === 'ot2' || normParent === 'عبد الحسين' || normParent === 'عبدالحسين';
+    const hasMohammadOrHussain =
+      person.childrenKeys.includes('o4') || person.childrenKeys.includes('o15');
+
+    if (isChildOfAbdulhussain && hasMohammadOrHussain) {
+      return person.key;
+    }
+  }
+
+  for (const person of people.values()) {
+    if (person.deleted || person.key === 'oF') continue;
+    const normName = normalizeArabic(person.name).trim();
+    if (normName !== 'فردان' && normName !== 'الفردان') continue;
+    if (
+      person.parentKey === 'ot2' ||
+      person.childrenKeys.includes('o4') ||
+      person.childrenKeys.includes('o15')
+    ) {
+      return person.key;
+    }
+  }
+
+  return 'am_mvzm8u6pyafp';
+}
+
 export function buildFamilyRegistry(state: FamilyState): FamilyTreeProcessed {
   const safeState: FamilyState = state || ({} as FamilyState);
   const safeOver = safeState.over || {};
