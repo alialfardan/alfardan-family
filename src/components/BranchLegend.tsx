@@ -1,68 +1,67 @@
 import React from 'react';
-import { FamilyTreeProcessed, ProcessedPerson } from '../types/family';
-import { BRANCH_COLORS } from '../data/treeManager';
-import { Users, Filter } from 'lucide-react';
+import { FamilyTreeProcessed } from '../types/family';
+import { Users, RotateCcw, Eye, EyeOff } from 'lucide-react';
 
 interface BranchLegendProps {
   registry: FamilyTreeProcessed;
-  onSelectPerson: (key: string, opts?: { reveal?: boolean; center?: boolean }) => void;
+  onSelectPerson: (key: string, opts?: { reveal?: boolean; center?: boolean; openDrawer?: boolean }) => void;
   activeBranchFilter: string | null;
   onFilterBranch: (branchKey: string | null) => void;
+  onResetTree: () => void;
+  isFamilyMember?: boolean;
+  showFemales?: boolean;
+  onToggleFemales?: () => void;
 }
 
 export const BranchLegend: React.FC<BranchLegendProps> = ({
   registry,
-  onSelectPerson,
   activeBranchFilter,
   onFilterBranch,
+  onResetTree,
+  isFamilyMember,
+  showFemales = true,
+  onToggleFemales,
 }) => {
   return (
-    <div className="flex items-center gap-2 overflow-x-auto py-1 px-1 scrollbar-none max-w-full">
+    <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none max-w-full bg-transparent w-fit touch-pan-x">
       {/* All Branches Button */}
       <button
         onClick={() => onFilterBranch(null)}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
+        className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[40px] flex-shrink-0 ${
           activeBranchFilter === null
             ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-            : 'bg-white/80 hover:bg-white text-slate-700 border-slate-200 shadow-sm'
+            : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
         }`}
       >
-        <Users className="w-3.5 h-3.5" />
+        <Users className="w-4 h-4" />
         <span>جميع الفروع ({registry.stats.totalCount})</span>
       </button>
 
-      {/* Individual Heads / Branches */}
-      {registry.heads.map((head: ProcessedPerson) => {
-        const branchInfo = BRANCH_COLORS[head.branch] || BRANCH_COLORS.b0;
-        const branchStat = registry.stats.branchesStats.find((b: { key: string }) => b.key === head.key);
-        const count = branchStat ? branchStat.count : 0;
-        const isActive = activeBranchFilter === head.branch;
+      {/* Reset Tree / Fardan Button */}
+      <button
+        onClick={onResetTree}
+        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-xs cursor-pointer min-h-[40px] flex-shrink-0"
+        title="إعادة ضبط الشجرة والتركيز على الجد فردان"
+      >
+        <RotateCcw className="w-4 h-4 text-amber-700" />
+        <span>إعادة ضبط الشجرة</span>
+      </button>
 
-        return (
-          <div key={`legend-${head.key}`} className="flex items-center">
-            <button
-              onClick={() => {
-                onFilterBranch(isActive ? null : head.branch);
-                onSelectPerson(head.key, { reveal: true, center: true });
-              }}
-              className={`group flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border shadow-sm ${
-                isActive
-                  ? 'bg-white ring-2 ring-emerald-600 border-emerald-600 text-slate-900 font-bold'
-                  : 'bg-white/85 hover:bg-white text-slate-800 border-slate-200'
-              }`}
-            >
-              <span
-                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: branchInfo.accent }}
-              />
-              <span>ذرية {head.name}</span>
-              <span className="text-[11px] text-slate-500 font-normal tabular-nums bg-slate-100 px-1.5 py-0.5 rounded-full">
-                {count}
-              </span>
-            </button>
-          </div>
-        );
-      })}
+      {/* Toggle Females Button (Family Members Only) */}
+      {isFamilyMember && onToggleFemales && (
+        <button
+          onClick={onToggleFemales}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[40px] flex-shrink-0 ${
+            showFemales === false
+              ? 'bg-rose-50 text-rose-800 border-rose-300 shadow-xs'
+              : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+          }`}
+          title={showFemales === false ? 'إظهار البنات في الشجرة' : 'إخفاء البنات في الشجرة'}
+        >
+          {showFemales === false ? <EyeOff className="w-4 h-4 text-rose-600" /> : <Eye className="w-4 h-4 text-slate-600" />}
+          <span>{showFemales === false ? 'إظهار البنات' : 'إخفاء البنات'}</span>
+        </button>
+      )}
     </div>
   );
 };

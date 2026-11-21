@@ -415,18 +415,18 @@ export default function App() {
   // Tree Expansion State (Keys of nodes that are expanded)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(() => {
     const initialSet = new Set<string>();
-    // Expand root path down to Grandfather Fardan (am_mvzm8u6pyafp) so his ancestors and sons (Mohammad & Hussain) are visible
+    // Expand root path down to Grandfather Fardan (am_mvzm8u6pyafp) so his ancestors are visible, sons collapsed
     initialSet.add('ot0');
     initialSet.add('ot1');
     initialSet.add('ot2');
     initialSet.add(resolveMainFardanKey(registry.people));
-    initialSet.add('ot3');
-    initialSet.add('oF');
     return initialSet;
   });
 
-  // Branch filter
+  // Branch filter & show/hide females toggle for family members
   const [filterBranch, setFilterBranch] = useState<string | null>(null);
+  const [showFemales, setShowFemales] = useState<boolean>(true);
+  const handleToggleFemales = useCallback(() => setShowFemales(prev => !prev), []);
 
   // Modals state
   const [addEditModal, setAddEditModal] = useState<{
@@ -586,16 +586,27 @@ export default function App() {
     return await sendCloudNotification(title, body);
   }, []);
 
+  // Reset Tree to foundational Fardan path
+  const handleResetTree = useCallback(() => {
+    setFilterBranch(null);
+    const basicSet = new Set<string>(['ot0', 'ot1', 'ot2', mainFardanKey]);
+    setExpandedKeys(basicSet);
+    setSelectedKey(mainFardanKey);
+    setIsDrawerOpen(false);
+    showToast('تم إعادة ضبط الشجرة والتركيز على الجد فردان 🌿', 'info');
+  }, [mainFardanKey, showToast]);
+
   // Tab switch handler: When entering the interactive tree, ensure the detail drawer is closed
   // and ensure a valid default Fardan selection + visible ancestor/children expansion if cleared
   const handleTabChange = useCallback((tab: ActiveTab) => {
     setCurrentTab(tab);
     if (tab === 'tree') {
       setIsDrawerOpen(false);
+      setFilterBranch(null);
       if (!selectedKey) {
         setSelectedKey(mainFardanKey);
         setExpandedKeys(prev => {
-          const next = new Set(prev);
+          const next = new Set<string>();
           next.add('ot0');
           next.add('ot1');
           next.add('ot2');
@@ -1975,18 +1986,6 @@ export default function App() {
 
         {currentTab === 'tree' && (
           <div className="relative w-full h-full">
-            {/* Top Floating Branch Legend */}
-            <div className="absolute top-4 right-4 left-4 z-20 pointer-events-none">
-              <div className="pointer-events-auto max-w-full">
-                <BranchLegend
-                  registry={registry}
-                  onSelectPerson={handleSelectPerson}
-                  activeBranchFilter={filterBranch}
-                  onFilterBranch={setFilterBranch}
-                />
-              </div>
-            </div>
-
             {/* Tree Canvas */}
             <TreeCanvas
               registry={registry}
@@ -2001,6 +2000,11 @@ export default function App() {
               onExpandAll={handleExpandAll}
               onCollapseAll={handleCollapseAll}
               filterBranch={filterBranch}
+              onFilterBranch={setFilterBranch}
+              onResetTree={handleResetTree}
+              isFamilyMember={isFamilyMember}
+              showFemales={showFemales}
+              onToggleFemales={handleToggleFemales}
               isAuthorized={isAuthorized}
               isPrivacyRestricted={isPrivacyRestricted}
               onOpenSearchResults={(q) => setSearchResultsModal({ isOpen: true, query: q })}

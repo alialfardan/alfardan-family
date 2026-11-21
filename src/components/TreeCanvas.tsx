@@ -10,7 +10,7 @@ import {
   getChildrenOfSpouse,
   resolveMainFardanKey
 } from '../data/treeManager';
-import { ZoomIn, ZoomOut, RotateCcw, Target, Maximize2, Minimize2, Plus, Search, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Target, Maximize2, Minimize2, Plus, Search, X, Users, Eye, EyeOff } from 'lucide-react';
 import { MemberAvatar, sanitizeAvatarUrl, markAvatarUrlFailed } from './MemberAvatar';
 
 interface TreeCanvasProps {
@@ -24,6 +24,11 @@ interface TreeCanvasProps {
   onExpandAll: () => void;
   onCollapseAll: () => void;
   filterBranch: string | null;
+  onFilterBranch?: (branchKey: string | null) => void;
+  onResetTree?: () => void;
+  isFamilyMember?: boolean;
+  showFemales?: boolean;
+  onToggleFemales?: () => void;
   isAuthorized?: boolean;
   onOpenSearchResults?: (query: string) => void;
   isPrivacyRestricted?: boolean;
@@ -106,9 +111,14 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   onExpandAll,
   onCollapseAll,
   filterBranch,
+  onFilterBranch,
+  onResetTree,
+  isFamilyMember,
   isAuthorized = false,
   onOpenSearchResults,
   isPrivacyRestricted = false,
+  showFemales = true,
+  onToggleFemales,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const zoomGRef = useRef<SVGGElement | null>(null);
@@ -218,7 +228,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
       }
 
       const sons = uniqueChildren.filter(c => c.gender !== 'f');
-      const daughters = isPrivacyRestricted ? [] : uniqueChildren.filter(c => c.gender === 'f');
+      const daughters = (isPrivacyRestricted || showFemales === false) ? [] : uniqueChildren.filter(c => c.gender === 'f');
 
       // Rule:
       // If the individual has daughters (daughters.length > 0):
@@ -987,140 +997,189 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
         </g>
       </svg>
 
-      {/* Floating Quick Search Bar in Interactive Tree */}
-      <div
-        ref={quickSearchRef}
-        className="absolute top-3 left-3 sm:top-4 sm:left-5 z-30 w-64 sm:w-80 md:w-88 max-w-[calc(100vw-5rem)] pointer-events-auto font-['Readex_Pro',sans-serif]"
-      >
-        <div className="relative bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/90 p-1 transition-all">
-          <div className="relative flex items-center">
-            <Search className="w-4 h-4 absolute right-3 text-emerald-700 pointer-events-none" />
-            <input
-              type="text"
-              value={quickSearchQuery}
-              onChange={e => {
-                setQuickSearchQuery(e.target.value);
-                setIsQuickSearchOpen(true);
-              }}
-              onFocus={() => setIsQuickSearchOpen(true)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && quickSearchQuery.trim() && onOpenSearchResults) {
-                  setIsQuickSearchOpen(false);
-                  onOpenSearchResults(quickSearchQuery.trim());
-                }
-              }}
-              placeholder="بحث سريع في الشجرة..."
-              className="w-full pr-9 pl-8 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-xs text-slate-800 placeholder-slate-400 font-medium rounded-xl border border-transparent focus:border-emerald-500 focus:outline-none transition-all"
-            />
-            {quickSearchQuery && (
+      {/* Unified Top Control Bar */}
+      <div className="absolute top-4 right-4 left-4 z-30 pointer-events-none font-['Readex_Pro',sans-serif]">
+        <div className="pointer-events-auto flex flex-col md:flex-row md:items-center md:justify-between gap-2 max-w-full">
+          {/* Row 1: Buttons (All branches, Reset tree, Hide females if family member) */}
+          <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none bg-transparent w-fit touch-pan-x">
+            {/* All Branches Button */}
+            <button
+              onClick={() => onFilterBranch?.(null)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[40px] flex-shrink-0 ${
+                filterBranch === null
+                  ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>جميع الفروع ({registry.stats.totalCount})</span>
+            </button>
+
+            {/* Reset Tree / Fardan Button */}
+            {onResetTree && (
               <button
-                onClick={() => {
-                  setQuickSearchQuery('');
-                  setIsQuickSearchOpen(false);
-                }}
-                className="absolute left-2.5 p-0.5 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
-                title="مسح"
+                onClick={onResetTree}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-xs cursor-pointer min-h-[40px] flex-shrink-0"
+                title="إعادة ضبط الشجرة والتركيز على الجد فردان"
               >
-                <X className="w-3.5 h-3.5" />
+                <RotateCcw className="w-4 h-4 text-amber-700" />
+                <span>إعادة ضبط الشجرة</span>
+              </button>
+            )}
+
+            {/* Toggle Females Button (Family Members Only) */}
+            {isFamilyMember && onToggleFemales && (
+              <button
+                onClick={onToggleFemales}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[40px] flex-shrink-0 ${
+                  showFemales === false
+                    ? 'bg-rose-50 text-rose-800 border-rose-300 shadow-xs'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                }`}
+                title={showFemales === false ? 'إظهار البنات في الشجرة' : 'إخفاء البنات في الشجرة'}
+              >
+                {showFemales === false ? <EyeOff className="w-4 h-4 text-rose-600" /> : <Eye className="w-4 h-4 text-slate-600" />}
+                <span>{showFemales === false ? 'إظهار البنات' : 'إخفاء البنات'}</span>
               </button>
             )}
           </div>
-        </div>
 
-        {/* Quick Search Autocomplete Dropdown */}
-        {isQuickSearchOpen && quickSearchQuery.trim().length > 0 && (
-          <div className="absolute top-full right-0 left-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-80 overflow-y-auto z-40 p-1.5 animate-in fade-in">
-            <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-500">
-              <span>المطابقات في الشجرة ({quickResults.length})</span>
-              {onOpenSearchResults && (
-                <button
-                  onClick={() => {
-                    setIsQuickSearchOpen(false);
-                    onOpenSearchResults(quickSearchQuery.trim());
+          {/* Quick Search Bar */}
+          <div
+            ref={quickSearchRef}
+            className="w-full md:w-80 lg:w-88 bg-transparent pointer-events-auto relative"
+          >
+            <div className="relative bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/90 p-1 transition-all">
+              <div className="relative flex items-center">
+                <Search className="w-4 h-4 absolute right-3 text-emerald-700 pointer-events-none" />
+                <input
+                  type="text"
+                  value={quickSearchQuery}
+                  onChange={e => {
+                    setQuickSearchQuery(e.target.value);
+                    setIsQuickSearchOpen(true);
                   }}
-                  className="text-emerald-800 hover:text-emerald-950 font-bold cursor-pointer"
-                >
-                  إطار منفرد ⇱
-                </button>
-              )}
+                  onFocus={() => setIsQuickSearchOpen(true)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && quickSearchQuery.trim() && onOpenSearchResults) {
+                      setIsQuickSearchOpen(false);
+                      onOpenSearchResults(quickSearchQuery.trim());
+                    }
+                  }}
+                  placeholder="بحث سريع في الشجرة..."
+                  className="w-full pr-9 pl-8 py-2 bg-slate-50 hover:bg-slate-100/70 focus:bg-white text-xs text-slate-800 placeholder-slate-400 font-medium rounded-xl border border-transparent focus:border-emerald-500 focus:outline-none transition-all"
+                />
+                {quickSearchQuery && (
+                  <button
+                    onClick={() => {
+                      setQuickSearchQuery('');
+                      setIsQuickSearchOpen(false);
+                    }}
+                    className="absolute left-2.5 p-0.5 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
+                    title="مسح"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
-            {quickResults.length === 0 ? (
-              <div className="p-4 text-center text-xs text-slate-500">
-                لا توجد نتائج تطابق "{quickSearchQuery}"
-              </div>
-            ) : (
-              <div className="space-y-0.5 py-1">
-                {quickResults.map(result => {
-                  const branchInfo = BRANCH_COLORS[result.branch] || BRANCH_COLORS.b0;
-                  const parent = result.parentKey ? registry.people.get(result.parentKey) : null;
-
-                  return (
-                    <button
-                      key={`quick-tree-res-${result.key}`}
-                      onClick={() => handleSelectFromQuickSearch(result.key)}
-                      className="w-full flex items-center justify-between p-2 hover:bg-emerald-50 rounded-xl transition-colors text-right cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-2xs overflow-hidden relative"
-                          style={{
-                            backgroundColor: branchInfo.bg,
-                            color: branchInfo.accent,
-                            border: result.photo ? '1.5px solid #059669' : `1px solid ${branchInfo.border}`
-                          }}
-                        >
-                          <MemberAvatar
-                            src={result.photo}
-                            personKey={result.key}
-                            name={result.name}
-                            gender={result.gender}
-                            imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-900 truncate">
-                              {result.name}
-                            </span>
-                            {result.photo && (
-                              <span className="text-[9px] px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-medium">
-                                صورة 📷
-                              </span>
-                            )}
-                          </div>
-                          <span className="block text-[10px] text-slate-500 truncate mt-0.5" title={getQuadLineageName(result.key, registry.people, 4)}>
-                            {getQuadLineageName(result.key, registry.people, 4) || (parent ? `${result.gender === 'f' ? 'بنت' : 'بن'} ${parent.name}` : '')}
-                            {result.branchName ? ` · ${result.branchName}` : ''}
-                          </span>
-                        </div>
-                      </div>
-
-                      <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full flex-shrink-0 font-medium">
-                        الجيل {result.generation}
-                      </span>
-                    </button>
-                  );
-                })}
-
-                {onOpenSearchResults && (
-                  <div className="pt-1.5 mt-1 border-t border-slate-100">
+            {/* Quick Search Autocomplete Dropdown */}
+            {isQuickSearchOpen && quickSearchQuery.trim().length > 0 && (
+              <div className="absolute top-full right-0 left-0 mt-2 bg-white rounded-2xl shadow-2xl border border-slate-200 max-h-80 overflow-y-auto z-40 p-1.5 animate-in fade-in">
+                <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-slate-100 text-[10px] font-bold text-slate-500">
+                  <span>المطابقات في الشجرة ({quickResults.length})</span>
+                  {onOpenSearchResults && (
                     <button
                       onClick={() => {
                         setIsQuickSearchOpen(false);
                         onOpenSearchResults(quickSearchQuery.trim());
                       }}
-                      className="w-full py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                      className="text-emerald-800 hover:text-emerald-950 font-bold cursor-pointer"
                     >
-                      <span>عرض كامل النتائج في إطار منفرد ({quickResults.length})</span>
-                      <span className="text-emerald-700">←</span>
+                      إطار منفرد ⇱
                     </button>
+                  )}
+                </div>
+
+                {quickResults.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500">
+                    لا توجد نتائج تطابق "{quickSearchQuery}"
+                  </div>
+                ) : (
+                  <div className="space-y-0.5 py-1">
+                    {quickResults.map(result => {
+                      const branchInfo = BRANCH_COLORS[result.branch] || BRANCH_COLORS.b0;
+                      const parent = result.parentKey ? registry.people.get(result.parentKey) : null;
+
+                      return (
+                        <button
+                          key={`quick-tree-res-${result.key}`}
+                          onClick={() => handleSelectFromQuickSearch(result.key)}
+                          className="w-full flex items-center justify-between p-2 hover:bg-emerald-50 rounded-xl transition-colors text-right cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div
+                              className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 shadow-2xs overflow-hidden relative"
+                              style={{
+                                backgroundColor: branchInfo.bg,
+                                color: branchInfo.accent,
+                                border: result.photo ? '1.5px solid #059669' : `1px solid ${branchInfo.border}`
+                              }}
+                            >
+                              <MemberAvatar
+                                src={result.photo}
+                                personKey={result.key}
+                                name={result.name}
+                                gender={result.gender}
+                                imgClassName="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="block text-xs font-bold text-slate-800 group-hover:text-emerald-900 truncate">
+                                  {result.name}
+                                </span>
+                                {result.photo && (
+                                  <span className="text-[9px] px-1.5 py-0.2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded font-medium">
+                                    صورة 📷
+                                  </span>
+                                )}
+                              </div>
+                              <span className="block text-[10px] text-slate-500 truncate mt-0.5" title={getQuadLineageName(result.key, registry.people, 4)}>
+                                {getQuadLineageName(result.key, registry.people, 4) || (parent ? `${result.gender === 'f' ? 'بنت' : 'بن'} ${parent.name}` : '')}
+                                {result.branchName ? ` · ${result.branchName}` : ''}
+                              </span>
+                            </div>
+                          </div>
+
+                          <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-full flex-shrink-0 font-medium">
+                            الجيل {result.generation}
+                          </span>
+                        </button>
+                      );
+                    })}
+
+                    {onOpenSearchResults && (
+                      <div className="pt-1.5 mt-1 border-t border-slate-100">
+                        <button
+                          onClick={() => {
+                            setIsQuickSearchOpen(false);
+                            onOpenSearchResults(quickSearchQuery.trim());
+                          }}
+                          className="w-full py-1.5 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <span>عرض كامل النتائج في إطار منفرد ({quickResults.length})</span>
+                          <span className="text-emerald-700">←</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Floating Canvas Controls (Bottom Left in RTL) */}
