@@ -1001,29 +1001,29 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
       <div className="absolute top-4 right-4 left-4 z-30 pointer-events-none font-['Readex_Pro',sans-serif]">
         <div className="pointer-events-auto flex flex-col md:flex-row md:items-center md:justify-between gap-2 max-w-full">
           {/* Row 1: Buttons (All branches, Reset tree, Hide females if family member) */}
-          <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none bg-transparent w-fit touch-pan-x">
+          <div className="flex flex-row items-center justify-between gap-1.5 md:gap-2 bg-transparent border-0 shadow-none w-full md:w-fit py-0.5">
             {/* All Branches Button */}
             <button
               onClick={() => onFilterBranch?.(null)}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[40px] flex-shrink-0 ${
+              className={`flex-1 flex items-center justify-center gap-1 md:gap-1.5 px-1 py-1 md:px-3.5 md:py-2 rounded-xl text-[9px] md:text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[32px] md:min-h-[40px] ${
                 filterBranch === null
                   ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
                   : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
               }`}
             >
-              <Users className="w-4 h-4" />
-              <span>جميع الفروع ({registry.stats.totalCount})</span>
+              <Users className="w-3 h-3 md:w-4 md:h-4 flex-shrink-0" />
+              <span className="truncate">جميع الفروع</span>
             </button>
 
             {/* Reset Tree / Fardan Button */}
             {onResetTree && (
               <button
                 onClick={onResetTree}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-xs cursor-pointer min-h-[40px] flex-shrink-0"
+                className="flex-1 flex items-center justify-center gap-1 md:gap-1.5 px-1 py-1 md:px-3.5 md:py-2 rounded-xl text-[9px] md:text-xs font-semibold whitespace-nowrap transition-all border bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 shadow-xs cursor-pointer min-h-[32px] md:min-h-[40px]"
                 title="إعادة ضبط الشجرة والتركيز على الجد فردان"
               >
-                <RotateCcw className="w-4 h-4 text-amber-700" />
-                <span>إعادة ضبط الشجرة</span>
+                <RotateCcw className="w-3 h-3 md:w-4 md:h-4 text-amber-700 flex-shrink-0" />
+                <span className="truncate">إعادة الضبط</span>
               </button>
             )}
 
@@ -1031,15 +1031,15 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
             {isFamilyMember && onToggleFemales && (
               <button
                 onClick={onToggleFemales}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[40px] flex-shrink-0 ${
+                className={`flex-1 flex items-center justify-center gap-1 md:gap-1.5 px-1 py-1 md:px-3.5 md:py-2 rounded-xl text-[9px] md:text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer min-h-[32px] md:min-h-[40px] ${
                   showFemales === false
                     ? 'bg-rose-50 text-rose-800 border-rose-300 shadow-xs'
                     : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
                 }`}
                 title={showFemales === false ? 'إظهار البنات في الشجرة' : 'إخفاء البنات في الشجرة'}
               >
-                {showFemales === false ? <EyeOff className="w-4 h-4 text-rose-600" /> : <Eye className="w-4 h-4 text-slate-600" />}
-                <span>{showFemales === false ? 'إظهار البنات' : 'إخفاء البنات'}</span>
+                {showFemales === false ? <EyeOff className="w-3 h-3 md:w-4 md:h-4 text-rose-600 flex-shrink-0" /> : <Eye className="w-3 h-3 md:w-4 md:h-4 text-slate-600 flex-shrink-0" />}
+                <span className="truncate">{showFemales === false ? 'إظهار البنات' : 'إخفاء البنات'}</span>
               </button>
             )}
           </div>
