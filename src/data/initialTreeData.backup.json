@@ -13475,6 +13475,11 @@
         "isDeceased": true,
         "deathYear": null,
         "at": 1795359082339
+      },
+      "o363": {
+        "isDeceased": true,
+        "deathYear": null,
+        "at": 1795361472409
       }
     },
     "removed": [
@@ -17773,6 +17778,6 @@
       "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
     },
     "privacyModeEnabled": true,
-    "updatedAt": 1795361110915
+    "updatedAt": 1795361819585
   }
 }
