@@ -1012,7 +1012,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               }`}
             >
               <Users className="w-3 h-3 md:w-4 md:h-4 flex-shrink-0" />
-              <span className="truncate">جميع الفروع</span>
+              <span className="truncate">{registry.stats.totalCount}</span>
             </button>
 
             {/* Reset Tree / Fardan Button */}
