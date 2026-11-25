@@ -12853,6 +12853,191 @@
           "familyOrigin": "من خارج العائلة",
           "notes": "سنابس"
         }
+      },
+      {
+        "id": "m_mwwfz25cb3u5",
+        "name": "محمد",
+        "gender": "m",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu10rxsv4am",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630392481,
+        "del": false,
+        "motherInfo": {
+          "name": "زهير محمد سلمان الشاخوري",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة"
+        }
+      },
+      {
+        "id": "m_mwwfz91mxl42",
+        "name": "حسين",
+        "gender": "m",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu10rxsv4am",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630401419,
+        "del": false,
+        "motherInfo": {
+          "name": "زهير محمد سلمان الشاخوري",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة"
+        }
+      },
+      {
+        "id": "m_mwwfzlyccq63",
+        "name": "زينب",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu10rxsv4am",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630418149,
+        "del": false,
+        "motherInfo": {
+          "name": "زهير محمد سلمان الشاخوري",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة"
+        }
+      },
+      {
+        "id": "m_mwwfzsxk95qe",
+        "name": "زهراء",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu10rxsv4am",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630427192,
+        "del": false,
+        "motherInfo": {
+          "name": "زهير محمد سلمان الشاخوري",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة"
+        }
+      },
+      {
+        "id": "m_mwwg00sz60pf",
+        "name": "حوراء",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu10rxsv4am",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630437395,
+        "del": false,
+        "motherInfo": {
+          "name": "زهير محمد سلمان الشاخوري",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة"
+        }
+      },
+      {
+        "id": "m_mwwg3jf6aexh",
+        "name": "يوسف",
+        "gender": "m",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu115iwp9j4",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630601491,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد مكي العلي",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "المالكيه"
+        }
+      },
+      {
+        "id": "m_mwwg3y6ha4el",
+        "name": "نوراء",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu115iwp9j4",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630620617,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد مكي العلي",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "المالكيه"
+        }
+      },
+      {
+        "id": "m_mwwg47gyf1d5",
+        "name": "حوراء",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu115iwp9j4",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630632658,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد مكي العلي",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "المالكيه"
+        }
+      },
+      {
+        "id": "m_mwwg4oc0w83e",
+        "name": "فاطمة",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu115iwp9j4",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630654512,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد مكي العلي",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "المالكيه"
+        }
+      },
+      {
+        "id": "m_mwwg74kccq1k",
+        "name": "سيد عمران",
+        "gender": "m",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu1ve18xqc4",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795630800907,
+        "del": false,
+        "motherInfo": {
+          "name": "سيد لؤي سيد عمران",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "هملة"
+        }
       }
     ],
     "photos": {
@@ -16865,6 +17050,36 @@
           "isFromFamily": false,
           "notes": "سنابس"
         }
+      ],
+      "am_mvu10rxsv4am": [
+        {
+          "id": "sp_mwwfy6e6kczs",
+          "name": "زهير محمد سلمان الشاخوري",
+          "isFromFamily": false
+        }
+      ],
+      "am_mwwfzlyccq63": [
+        {
+          "id": "sp_mwwg0ldkclvy",
+          "name": "علي عبدالجليل الموت",
+          "isFromFamily": false
+        }
+      ],
+      "am_mvu115iwp9j4": [
+        {
+          "id": "sp_mwwg38o34vaf",
+          "name": "احمد مكي العلي",
+          "isFromFamily": false,
+          "notes": "المالكيه"
+        }
+      ],
+      "am_mvu1ve18xqc4": [
+        {
+          "id": "sp_mwwg6tguh9fe",
+          "name": "سيد لؤي سيد عمران",
+          "isFromFamily": false,
+          "notes": "هملة"
+        }
       ]
     },
     "mothers": {
@@ -18884,6 +19099,61 @@
         "isFromFamily": false,
         "name": "احمد علي ناصر السميع",
         "notes": "سنابس"
+      },
+      "am_mwwfz25cb3u5": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "زهير محمد سلمان الشاخوري"
+      },
+      "am_mwwfz91mxl42": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "زهير محمد سلمان الشاخوري"
+      },
+      "am_mwwfzlyccq63": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "زهير محمد سلمان الشاخوري"
+      },
+      "am_mwwfzsxk95qe": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "زهير محمد سلمان الشاخوري"
+      },
+      "am_mwwg00sz60pf": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "زهير محمد سلمان الشاخوري"
+      },
+      "am_mwwg3jf6aexh": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد مكي العلي",
+        "notes": "المالكيه"
+      },
+      "am_mwwg3y6ha4el": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد مكي العلي",
+        "notes": "المالكيه"
+      },
+      "am_mwwg47gyf1d5": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد مكي العلي",
+        "notes": "المالكيه"
+      },
+      "am_mwwg4oc0w83e": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد مكي العلي",
+        "notes": "المالكيه"
+      },
+      "am_mwwg74kccq1k": {
+        "name": "سيد لؤي سيد عمران",
+        "isFromFamily": false,
+        "familyOrigin": "من خارج العائلة",
+        "notes": "هملة"
       }
     },
     "contactInfo": {
@@ -18897,6 +19167,6 @@
       "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
     },
     "privacyModeEnabled": true,
-    "updatedAt": 1795629547596
+    "updatedAt": 1795630888629
   }
 }
