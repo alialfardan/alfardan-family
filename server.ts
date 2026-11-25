@@ -813,7 +813,7 @@ async function startServer() {
           true
         );
 
-        // Preserve all existing valid photos without altering unchanged URLs, extract incoming Base64 to public/avatars/, and only delete explicitly removed photos
+        // Preserve all existing valid photos without altering unchanged URLs, extract incoming Base64 to public/avatars/, and keep inline Data URI in initialTreeData.json
         const mergedPhotos: Record<string, string> = {};
         for (const [ek, ev] of Object.entries(existingData?.photos || {})) {
           if (explicitlyDeletedPhotoKeys.has(ek)) {
@@ -825,8 +825,8 @@ async function startServer() {
               fw.forEach((f) => filesWrittenSet.add(f));
               if (cleanPath) {
                 updatedManifestUrls[`${ek.replace(/[^a-zA-Z0-9_-]/g, '')}.jpg`] = cleanPath;
-                mergedPhotos[ek] = cleanPath;
               }
+              mergedPhotos[ek] = ev.trim();
             } else {
               mergedPhotos[ek] = ev.trim();
             }
@@ -843,8 +843,8 @@ async function startServer() {
               fw.forEach((f) => filesWrittenSet.add(f));
               if (cleanPath) {
                 updatedManifestUrls[`${pk.replace(/[^a-zA-Z0-9_-]/g, '')}.jpg`] = cleanPath;
-                mergedPhotos[pk] = cleanPath;
               }
+              mergedPhotos[pk] = pv.trim();
             } else {
               const { cleanPath, filesWritten: fw } = savePhotoToAvatarsDirAndGetCleanPath(pk, pv, finalUpdatedAt);
               fw.forEach((f) => filesWrittenSet.add(f));
@@ -1080,8 +1080,9 @@ async function startServer() {
               }
             } else {
               if (!targetObj.photos) targetObj.photos = {};
-              if (targetObj.photos[key] !== cleanAvatarPath) {
-                targetObj.photos[key] = cleanAvatarPath;
+              const storedVal = dataUrl.startsWith('data:image/') ? dataUrl : cleanAvatarPath;
+              if (targetObj.photos[key] !== storedVal) {
+                targetObj.photos[key] = storedVal;
                 entryChanged = true;
               }
             }
