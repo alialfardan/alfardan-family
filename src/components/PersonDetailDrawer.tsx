@@ -10,7 +10,10 @@ import {
   getChildrenOfSpouse,
   normalizeArabic,
   HISTORICAL_ROOTS_LINE,
-  hasHistoricalRootsSubtitle
+  hasHistoricalRootsSubtitle,
+  isSabt,
+  getFatherName,
+  getMotherNameFormatted
 } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
 import {
@@ -141,18 +144,15 @@ export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
     setIsEditingBirthDate(false);
   };
 
-  if (!person) return null;
-
-  const branchInfo = BRANCH_COLORS[person.branch] || BRANCH_COLORS.b0;
-  const lineageChain = getLineageChain(personKey, registry.people);
-  const parent = person.parentKey ? registry.people.get(person.parentKey) : null;
+  const branchInfo = BRANCH_COLORS[person?.branch || 'b0'] || BRANCH_COLORS.b0;
+  const lineageChain = person ? getLineageChain(personKey, registry.people) : [];
+  const parent = person?.parentKey ? registry.people.get(person.parentKey) : null;
   const isChildOfFemale = parent?.gender === 'f';
-  const resolvedHusbandName = isChildOfFemale
-    ? (person.mother?.name && normalizeArabic(person.mother.name) !== normalizeArabic(parent!.name)
-        ? person.mother.name
-        : parent?.spouses?.[0]?.name || '')
-    : '';
-  const spouses: SpouseInfo[] = person.spouses || [];
+  const fatherNameFormatted = person ? getFatherName(person.key, registry.people) : '';
+  const motherNameFormatted = person ? getMotherNameFormatted(person.key, registry.people) : '';
+  const motherKeyForClick = isChildOfFemale ? parent?.key : person?.mother?.personKey;
+  const isMomSabt = motherKeyForClick ? isSabt(motherKeyForClick, registry.people) : false;
+  const spouses: SpouseInfo[] = person?.spouses || [];
   const fatherSpouses: SpouseInfo[] = parent?.spouses || [];
   const hasMultipleWives = fatherSpouses.length > 1;
 
@@ -165,6 +165,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
 
   // Resolve ALL children for this person (both for fathers and mothers across all marriages)
   const allResolvedChildren = useMemo(() => {
+    if (!person) return [];
     const list: ProcessedPerson[] = [];
     const seen = new Set<string>();
 
@@ -215,6 +216,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
 
   // Breakdown of children grouped by spouse (husband for women, wife for men)
   const childrenBySpouse = useMemo(() => {
+    if (!person) return { groups: [], unassigned: { sons: [], daughters: [], all: [] } };
     const groups: {
       spouse: SpouseInfo;
       spousePerson: ProcessedPerson | null;
@@ -259,7 +261,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
   }, [person, registry.people, allResolvedChildren]);
 
   // Siblings
-  const siblings = parent
+  const siblings = parent && person
     ? parent.childrenKeys
         .map((k: string) => registry.people.get(k))
         .filter((s): s is ProcessedPerson => !!s && !s.deleted && s.key !== person.key)
@@ -278,9 +280,12 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
       }
     });
   }
-  countSubtree(person.key);
+  if (person) {
+    countSubtree(person.key);
+  }
 
   const handleCopyLineage = () => {
+    if (!person) return;
     const text = formatLineageString(person.key, registry.people);
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -288,16 +293,19 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
   };
 
   const handleSaveNote = () => {
+    if (!person) return;
     onUpdateNote(person.key, noteDraft);
     setIsEditingNote(false);
   };
 
   const linkedDocuments = useMemo(() => {
-    if (!archivalPhotos || archivalPhotos.length === 0) return [];
+    if (!person || !archivalPhotos || archivalPhotos.length === 0) return [];
     return archivalPhotos.filter(
       doc => Array.isArray(doc.taggedPersonKeys) && doc.taggedPersonKeys.includes(person.key)
     );
-  }, [archivalPhotos, person.key]);
+  }, [archivalPhotos, person]);
+
+  if (!person) return null;
 
   return (
     <div
@@ -462,16 +470,13 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             </h2>
 
             {parent && (
-              isChildOfFemale ? (
-                <p className="text-sm text-amber-950/90 font-medium mt-1">
-                  {person.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
-                  <span className="font-bold text-slate-900">
-                    {resolvedHusbandName ? resolvedHusbandName : '(من خارج العائلة)'}
+              <p className="text-sm text-slate-500 mt-1">
+                {person.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
+                {isChildOfFemale ? (
+                  <span className="font-semibold text-slate-700">
+                    {fatherNameFormatted ? fatherNameFormatted : '(من خارج العائلة)'}
                   </span>
-                </p>
-              ) : (
-                <p className="text-sm text-slate-500 mt-1">
-                  {person.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
+                ) : (
                   <button
                     onClick={() => onSelectPerson(parent.key, { reveal: true, center: true })}
                     className="font-semibold text-slate-700 hover:text-emerald-700 underline underline-offset-4 decoration-slate-300 hover:decoration-emerald-500 text-right"
@@ -487,30 +492,23 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
                         .join(' ');
                     })()}
                   </button>
-                </p>
-              )
+                )}
+              </p>
             )}
 
             {!isPrivacyRestricted && (isChildOfFemale ? parent : person.mother) && (
               <p className="text-xs text-slate-700 mt-0.5">
                 <span>الوالدة:{' '}</span>
-                {isChildOfFemale ? (
+                {motherKeyForClick && registry.people.has(motherKeyForClick) && !isMomSabt ? (
                   <button
-                    onClick={() => onSelectPerson(parent!.key, { reveal: true, center: true })}
+                    onClick={() => onSelectPerson(motherKeyForClick, { reveal: true, center: true })}
                     className="font-semibold text-rose-800 hover:text-rose-950 underline decoration-rose-300"
                   >
-                    {parent!.name} (آل فردان)
-                  </button>
-                ) : person.mother?.isFromFamily && person.mother?.personKey ? (
-                  <button
-                    onClick={() => onSelectPerson(person.mother!.personKey!, { reveal: true, center: true })}
-                    className="font-semibold text-rose-800 hover:text-rose-950 underline decoration-rose-300"
-                  >
-                    {person.mother.name} (آل فردان)
+                    {motherNameFormatted}
                   </button>
                 ) : (
                   <span className="font-semibold text-slate-700">
-                    {person.mother?.name} {person.mother?.familyOrigin ? `(${person.mother.familyOrigin})` : ''}
+                    {motherNameFormatted}
                   </span>
                 )}
               </p>
@@ -850,10 +848,10 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl">
               <span className="text-[10px] text-emerald-800 font-bold block">الوالد (الأب)</span>
               {isChildOfFemale ? (
-                resolvedHusbandName ? (
+                fatherNameFormatted ? (
                   <div>
                     <span className="font-bold text-xs text-emerald-950 mt-0.5 block truncate">
-                      {resolvedHusbandName}
+                      {fatherNameFormatted}
                     </span>
                     <span className="text-[10px] text-emerald-700 block truncate">
                       {person.mother?.familyOrigin || parent?.spouses?.[0]?.familyOrigin || 'من خارج العائلة'}

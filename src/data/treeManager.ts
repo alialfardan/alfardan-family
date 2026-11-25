@@ -1479,15 +1479,56 @@ export function getLineageChain(key: string, registry: Map<string, ProcessedPers
   return filtered.length > 0 ? filtered : fullChain;
 }
 
+export function getPatrilinealLineageString(key: string, registry: Map<string, ProcessedPerson>): string {
+  const person = registry.get(key);
+  if (!person) return '';
+
+  const parent = person.parentKey ? registry.get(person.parentKey) : null;
+  const isChildOfFemale = parent?.gender === 'f';
+  const connector = person.gender === 'f' ? 'بنت' : 'بن';
+
+  if (!parent) {
+    return person.name;
+  }
+
+  if (isChildOfFemale) {
+    const fatherName = getFatherName(key, registry);
+    let fatherPerson: ProcessedPerson | undefined = undefined;
+    for (const p of registry.values()) {
+      if (!p.deleted && normalizeArabic(p.name) === normalizeArabic(fatherName)) {
+        fatherPerson = p;
+        break;
+      }
+    }
+
+    if (fatherPerson && fatherPerson.key !== person.key) {
+      const fatherLineage = getLineageChain(fatherPerson.key, registry);
+      return [
+        person.name,
+        ...fatherLineage.map((p, idx) => {
+          if (idx === 0) return `${connector} ${p.name}`;
+          if (idx === fatherLineage.length - 1) return p.name;
+          return `${p.name} ${p.gender === 'f' ? 'بنت' : 'بن'}`;
+        })
+      ].join(' ');
+    } else {
+      return `${person.name} ${connector} ${fatherName}`;
+    }
+  } else {
+    const chain = getLineageChain(key, registry);
+    return chain
+      .map((p, idx) => {
+        if (idx === 0) return p.name;
+        const childPerson = chain[idx - 1];
+        const conn = childPerson.gender === 'f' ? 'بنت' : 'بن';
+        return `${conn} ${p.name}`;
+      })
+      .join(' ');
+  }
+}
+
 export function formatLineageString(key: string, registry: Map<string, ProcessedPerson>): string {
-  const chain = getLineageChain(key, registry);
-  return chain
-    .map((p, idx) => {
-      if (idx === chain.length - 1) return p.name;
-      const connector = p.gender === 'f' ? 'بنت' : 'بن';
-      return `${p.name} ${connector}`;
-    })
-    .join(' ');
+  return getPatrilinealLineageString(key, registry);
 }
 
 // Unified primary lineage string across all dropdowns, directory cards, certificates, and sections:
@@ -1987,5 +2028,95 @@ export function getChildrenOfSpouse(
 
   return { sons, daughters, all: [...sons, ...daughters] };
 }
+
+/**
+ * 1. Defines whether a person is a "sabt" (descendant through female/sabt line).
+ * A person is a sabt if:
+ * a) Their mother is a female from the family/trunk, or
+ * b) They are descendants of a sabt (parent along ancestry chain is female).
+ */
+export function isSabt(personKey: string, people: Map<string, ProcessedPerson>): boolean {
+  const person = people.get(personKey);
+  if (!person) return false;
+  if (person.mother && person.mother.personKey) {
+    if (isSabt(person.mother.personKey, people)) return true;
+  }
+  let cur: ProcessedPerson | undefined = person;
+  while (cur && cur.parentKey) {
+    const parent = people.get(cur.parentKey);
+    if (!parent) break;
+    if (parent.gender === 'f') return true;
+    cur = parent;
+  }
+  return false;
+}
+
+export function isOriginalTrunk(personKey: string, people: Map<string, ProcessedPerson>): boolean {
+  return !isSabt(personKey, people);
+}
+
+/**
+ * 2. Resolves the father's name for a person (attributes child to father always).
+ * If added under a female (parent.gender === 'f'), searches for her husband and returns his name.
+ */
+export function getFatherName(personKey: string, people: Map<string, ProcessedPerson>): string {
+  const person = people.get(personKey);
+  if (!person) return 'من خارج العائلة';
+  if (!person.parentKey) return 'من خارج العائلة';
+  const parent = people.get(person.parentKey);
+  if (!parent) return 'من خارج العائلة';
+
+  if (parent.gender === 'f') {
+    const spouses = parent.spouses || [];
+    if (spouses.length > 0) {
+      if (person.mother?.name) {
+        const matchedSpouse = spouses.find(s => normalizeArabic(s.name) === normalizeArabic(person.mother!.name));
+        if (matchedSpouse) return matchedSpouse.name;
+      }
+      return spouses[0].name || 'من خارج العائلة';
+    }
+    if (person.mother?.name) {
+      return person.mother.name;
+    }
+    return 'من خارج العائلة';
+  } else {
+    return parent.name;
+  }
+}
+
+/**
+ * 3. Formats mother's name: adds (آل فردان) only if from original trunk,
+ * and strictly prohibits it for sabt mothers.
+ */
+export function getMotherNameFormatted(personKey: string, people: Map<string, ProcessedPerson>): string {
+  const person = people.get(personKey);
+  if (!person) return '';
+  const parent = person.parentKey ? people.get(person.parentKey) : null;
+  const isChildOfFemale = parent?.gender === 'f';
+
+  if (isChildOfFemale && parent) {
+    const motherSabt = isSabt(parent.key, people);
+    if (!motherSabt) {
+      return `${parent.name} (آل فردان)`;
+    }
+    return parent.name;
+  }
+
+  if (person.mother) {
+    const mName = person.mother.name;
+    if (!mName) return '';
+    const mPersonKey = person.mother.personKey;
+    const mPerson = mPersonKey ? people.get(mPersonKey) : null;
+    const motherSabt = mPerson ? isSabt(mPerson.key, people) : (!person.mother.isFromFamily);
+
+    if (person.mother.isFromFamily && !motherSabt) {
+      return `${mName} (آل فردان)`;
+    }
+    return mName + (person.mother.familyOrigin ? ` (${person.mother.familyOrigin})` : '');
+  }
+
+  return '';
+}
+
 
 
