@@ -100,6 +100,31 @@ function getPersonSubtitle(person: ProcessedPerson, registry: FamilyTreeProcesse
   return '';
 }
 
+function getPersonMainBranch(
+  person: ProcessedPerson,
+  people: Map<string, ProcessedPerson>
+): 'ayoub' | 'mohammad' | 'hussain' | null {
+  let cur: ProcessedPerson | undefined = person;
+  let guard = 0;
+  while (cur && guard++ < 60) {
+    if (cur.key === 'ot3' || cur.key === 'oF' || cur.key === 'o13') {
+      return 'ayoub';
+    }
+    if (cur.key === 'o4') {
+      return 'mohammad';
+    }
+    if (cur.key === 'o15') {
+      return 'hussain';
+    }
+    if (!cur.parentKey) break;
+    cur = people.get(cur.parentKey);
+  }
+  if (person.branch === 'b2') return 'ayoub';
+  if (person.branch === 'b1') return 'mohammad';
+  if (person.branch === 'b3') return 'hussain';
+  return null;
+}
+
 export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   registry,
   selectedKey,
@@ -321,6 +346,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
   }, [hierarchyData]);
 
   // Compute sequential upward ancestor lineage (from selected person up to Sheikh Ali / root)
+  // For children of female family members (الأسباط), the patrilineal lineage does NOT extend up through their mother's ancestors.
   const { ancestorPersonKeys, ancestorD3Nodes, hasActiveLineage } = useMemo(() => {
     const personKeys = new Set<string>();
     const orderedChainKeys: string[] = [];
@@ -332,7 +358,11 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
         personKeys.add(cur.key);
         orderedChainKeys.push(cur.key);
         if (!cur.parentKey) break;
-        cur = registry.people.get(cur.parentKey);
+        const parentPerson = registry.people.get(cur.parentKey);
+        if (parentPerson?.gender === 'f') {
+          break;
+        }
+        cur = parentPerson;
       }
     }
 
@@ -344,8 +374,19 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
         if (deepestVisibleNode) break;
       }
       if (deepestVisibleNode) {
-        for (const anc of deepestVisibleNode.ancestors()) {
-          d3NodesSet.add(anc);
+        const deepestParentKey = deepestVisibleNode.data.parentKey;
+        const deepestParent = deepestParentKey ? registry.people.get(deepestParentKey) : null;
+        if (deepestParent?.gender === 'f') {
+          // Stop lineage at the grandchild node itself; do not highlight upward through mother or group node
+          d3NodesSet.add(deepestVisibleNode);
+        } else {
+          for (const anc of deepestVisibleNode.ancestors()) {
+            d3NodesSet.add(anc);
+            if (!anc.data.isGroup && anc.data.parentKey) {
+              const p = registry.people.get(anc.data.parentKey);
+              if (p?.gender === 'f') break;
+            }
+          }
         }
       }
     }
@@ -362,7 +403,14 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
     const regLinks: d3.HierarchyLink<any>[] = [];
     const linLinks: d3.HierarchyLink<any>[] = [];
     for (const link of links) {
-      if (ancestorD3Nodes.has(link.source) && ancestorD3Nodes.has(link.target)) {
+      const isSourceFemaleMother = !link.source.data.isGroup && link.source.data.gender === 'f';
+      const isSourceFemaleGroup = !!link.source.data.isGroup && link.source.data.parentPerson?.gender === 'f';
+      if (
+        !isSourceFemaleMother &&
+        !isSourceFemaleGroup &&
+        ancestorD3Nodes.has(link.source) &&
+        ancestorD3Nodes.has(link.target)
+      ) {
         linLinks.push(link);
       } else {
         regLinks.push(link);
@@ -541,6 +589,22 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
           <filter id="card-shadow-lineage" x="-15%" y="-20%" width="130%" height="150%">
             <feDropShadow dx="0" dy="3" stdDeviation="4.5" floodColor="#000000" floodOpacity="0.28" />
           </filter>
+          <linearGradient id="gold-node-gradient" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#fefce8" />
+            <stop offset="100%" stopColor="#fef08a" />
+          </linearGradient>
+          <linearGradient id="branch-ayoub-gradient" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#eff6ff" />
+            <stop offset="100%" stopColor="#dbeafe" />
+          </linearGradient>
+          <linearGradient id="branch-mohammad-gradient" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#ecfdf5" />
+            <stop offset="100%" stopColor="#d1fae5" />
+          </linearGradient>
+          <linearGradient id="branch-hussain-gradient" x1="100%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#faf5ff" />
+            <stop offset="100%" stopColor="#f3e8ff" />
+          </linearGradient>
         </defs>
 
         <g ref={zoomGRef}>
@@ -752,6 +816,9 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               const branchInfo = BRANCH_COLORS[person.branch] || BRANCH_COLORS.b0;
               const isFardan = person.key === defaultFardanKey;
               const isFemale = person.gender === 'f';
+              const parentPerson = person.parentKey ? registry.people.get(person.parentKey) : null;
+              const isChildOfFemale = parentPerson?.gender === 'f';
+              const mainBranch = getPersonMainBranch(person, registry.people);
               const visibleChildrenCount = isPrivacyRestricted
                 ? person.childrenKeys
                     .map(k => registry.people.get(k))
@@ -799,15 +866,57 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                     width={cardWidth}
                     height={cardHeight}
                     rx={14}
-                    fill={isSelected ? '#09090b' : '#ffffff'}
+                    fill={
+                      isChildOfFemale
+                        ? 'url(#gold-node-gradient)'
+                        : isSelected
+                        ? '#09090b'
+                        : isFemale
+                        ? '#fff1f2'
+                        : mainBranch === 'ayoub'
+                        ? 'url(#branch-ayoub-gradient)'
+                        : mainBranch === 'mohammad'
+                        ? 'url(#branch-mohammad-gradient)'
+                        : mainBranch === 'hussain'
+                        ? 'url(#branch-hussain-gradient)'
+                        : '#ffffff'
+                    }
                     stroke={
                       isNodeOnLineage
                         ? '#000000'
+                        : isChildOfFemale
+                        ? (isFemale ? '#fb7185' : '#14b8a6')
+                        : isFemale
+                        ? (mainBranch === 'ayoub'
+                            ? '#2563eb'
+                            : mainBranch === 'mohammad'
+                            ? '#059669'
+                            : mainBranch === 'hussain'
+                            ? '#9333ea'
+                            : '#f43f5e')
                         : isFardan
                         ? '#d97706'
+                        : mainBranch === 'ayoub'
+                        ? '#93c5fd'
+                        : mainBranch === 'mohammad'
+                        ? '#6ee7b7'
+                        : mainBranch === 'hussain'
+                        ? '#d8b4fe'
                         : '#e2e8f0'
                     }
-                    strokeWidth={isSelected ? 3.2 : isAncestorOnPath ? 3 : isFardan ? 2 : 1}
+                    strokeWidth={
+                      isSelected
+                        ? 3.2
+                        : isAncestorOnPath
+                        ? 3
+                        : isChildOfFemale
+                        ? 2
+                        : isFemale
+                        ? 3
+                        : isFardan
+                        ? 2
+                        : 1
+                    }
                     filter={isNodeOnLineage ? 'url(#card-shadow-lineage)' : 'url(#card-shadow)'}
                     className={`transition-all duration-200 ${
                       isNodeOnLineage ? '' : 'group-hover:stroke-[#059669]'
@@ -817,7 +926,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                   {/* Branch / Gender Color Accent Stripe (Right edge in RTL) */}
                   <path
                     d={`M ${cardWidth / 2} ${-cardHeight / 2 + 10} A 10 10 0 0 1 ${cardWidth / 2} ${cardHeight / 2 - 10}`}
-                    stroke={isFemale ? '#f43f5e' : branchInfo.accent}
+                    stroke={isChildOfFemale ? (isFemale ? '#f43f5e' : '#0d9488') : isFemale ? '#f43f5e' : branchInfo.accent}
                     strokeWidth={3.5}
                     strokeLinecap="round"
                   />
@@ -828,8 +937,8 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                       cx="0"
                       cy="0"
                       r={NODE_AVATAR_RADIUS}
-                      fill={isFemale ? '#fff1f2' : branchInfo.bg}
-                      stroke={isFemale ? '#fbcfe8' : branchInfo.border}
+                      fill={isChildOfFemale ? (isFemale ? '#fff1f2' : '#f0fdfa') : isFemale ? '#fff1f2' : branchInfo.bg}
+                      stroke={isChildOfFemale ? (isFemale ? '#fda4af' : '#5eead4') : isFemale ? '#fbcfe8' : branchInfo.border}
                       strokeWidth={1}
                     />
                     {/* Always render initial letter in case image fails to load or is not present */}
@@ -838,7 +947,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                       y="1"
                       textAnchor="middle"
                       dominantBaseline="central"
-                      fill={isFemale ? '#e11d48' : branchInfo.accent}
+                      fill={isChildOfFemale ? (isFemale ? '#e11d48' : '#0f766e') : isFemale ? '#e11d48' : branchInfo.accent}
                       fontSize="12"
                       fontWeight="700"
                       className="font-['Alexandria']"
@@ -879,9 +988,17 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                           y={subtitle ? -5 : 1}
                           textAnchor="start"
                           dominantBaseline="central"
-                          fill={isSelected ? '#ffffff' : isAncestorOnPath ? '#000000' : '#121714'}
+                          fill={
+                            isChildOfFemale
+                              ? '#000000'
+                              : isSelected
+                              ? '#ffffff'
+                              : isAncestorOnPath
+                              ? '#000000'
+                              : '#121714'
+                          }
                           fontSize="13"
-                          fontWeight={isNodeOnLineage || isFardan ? '700' : '600'}
+                          fontWeight={isNodeOnLineage || isFardan || isChildOfFemale ? '700' : '600'}
                           className="font-['Readex_Pro']"
                           direction="rtl"
                         >
@@ -895,9 +1012,17 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                             y={9}
                             textAnchor="start"
                             dominantBaseline="central"
-                            fill={isSelected ? '#d4d4d8' : isAncestorOnPath ? '#334155' : '#64748b'}
+                            fill={
+                              isChildOfFemale
+                                ? '#1c1917'
+                                : isSelected
+                                ? '#d4d4d8'
+                                : isAncestorOnPath
+                                ? '#334155'
+                                : '#64748b'
+                            }
                             fontSize="9.5"
-                            fontWeight={isAncestorOnPath ? '600' : '400'}
+                            fontWeight={isAncestorOnPath || isChildOfFemale ? '600' : '400'}
                             className="font-['Readex_Pro']"
                             direction="rtl"
                           >

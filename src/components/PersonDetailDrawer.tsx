@@ -146,6 +146,12 @@ export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
   const branchInfo = BRANCH_COLORS[person.branch] || BRANCH_COLORS.b0;
   const lineageChain = getLineageChain(personKey, registry.people);
   const parent = person.parentKey ? registry.people.get(person.parentKey) : null;
+  const isChildOfFemale = parent?.gender === 'f';
+  const resolvedHusbandName = isChildOfFemale
+    ? (person.mother?.name && normalizeArabic(person.mother.name) !== normalizeArabic(parent!.name)
+        ? person.mother.name
+        : parent?.spouses?.[0]?.name || '')
+    : '';
   const spouses: SpouseInfo[] = person.spouses || [];
   const fatherSpouses: SpouseInfo[] = parent?.spouses || [];
   const hasMultipleWives = fatherSpouses.length > 1;
@@ -308,11 +314,17 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
         ...(isModalView ? {} : { maxHeight: 'calc(100dvh - 80px)' })
       }}
     >
-      {/* Top Banner with Branch Color Accent */}
+      {/* Top Banner with Branch Color Accent (or Golden Gradient for children of daughters) */}
       <div
-        className="relative flex-shrink-0 px-6 pt-4 pb-5 border-b border-slate-100 transition-colors touch-pan-y"
+        className={`relative flex-shrink-0 px-6 pt-4 pb-5 border-b transition-colors touch-pan-y ${
+          isChildOfFemale
+            ? 'bg-gradient-to-r from-yellow-200 via-yellow-300 to-amber-300 border-amber-400/70'
+            : 'border-slate-100'
+        }`}
         style={{
-          background: `linear-gradient(135deg, ${branchInfo.bg} 0%, #ffffff 80%)`,
+          ...(isChildOfFemale
+            ? {}
+            : { background: `linear-gradient(135deg, ${branchInfo.bg} 0%, #ffffff 80%)` }),
           touchAction: 'pan-y'
         }}
       >
@@ -352,13 +364,16 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             الجيل {person.generation}
           </span>
 
-          {!isPrivacyRestricted && person.mother && (
+          {!isPrivacyRestricted && (isChildOfFemale ? parent : person.mother) && (
             <span
               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200"
-              title={`الوالدة: ${person.mother.name}`}
+              title={`الوالدة: ${isChildOfFemale ? parent!.name : person.mother!.name}`}
             >
               <span>🌸</span>
-              <span>أمه: {person.mother.name}</span>
+              <span>
+                {person.gender === 'f' ? 'أمها' : 'أمه'}:{' '}
+                {isChildOfFemale ? parent!.name : person.mother!.name}
+              </span>
             </span>
           )}
 
@@ -447,21 +462,46 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             </h2>
 
             {parent && (
-              <p className="text-sm text-slate-500 mt-1">
-                {person.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
-                <button
-                  onClick={() => onSelectPerson(parent.key, { reveal: true, center: true })}
-                  className="font-semibold text-slate-700 hover:text-emerald-700 underline underline-offset-4 decoration-slate-300 hover:decoration-emerald-500"
-                >
-                  {parent.name}
-                </button>
-              </p>
+              isChildOfFemale ? (
+                <p className="text-sm text-amber-950/90 font-medium mt-1">
+                  {person.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
+                  <span className="font-bold text-slate-900">
+                    {resolvedHusbandName ? resolvedHusbandName : '(من خارج العائلة)'}
+                  </span>
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500 mt-1">
+                  {person.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
+                  <button
+                    onClick={() => onSelectPerson(parent.key, { reveal: true, center: true })}
+                    className="font-semibold text-slate-700 hover:text-emerald-700 underline underline-offset-4 decoration-slate-300 hover:decoration-emerald-500 text-right"
+                  >
+                    {(() => {
+                      const fatherChain = getLineageChain(parent.key, registry.people).slice(0, 4);
+                      if (fatherChain.length === 0) return parent.name;
+                      return fatherChain
+                        .map((p, idx) => {
+                          if (idx === fatherChain.length - 1) return p.name;
+                          return `${p.name} ${p.gender === 'f' ? 'بنت' : 'بن'}`;
+                        })
+                        .join(' ');
+                    })()}
+                  </button>
+                </p>
+              )
             )}
 
-            {!isPrivacyRestricted && person.mother && (
-              <p className="text-xs text-slate-500 mt-0.5">
+            {!isPrivacyRestricted && (isChildOfFemale ? parent : person.mother) && (
+              <p className="text-xs text-slate-700 mt-0.5">
                 <span>الوالدة:{' '}</span>
-                {person.mother.isFromFamily && person.mother.personKey ? (
+                {isChildOfFemale ? (
+                  <button
+                    onClick={() => onSelectPerson(parent!.key, { reveal: true, center: true })}
+                    className="font-semibold text-rose-800 hover:text-rose-950 underline decoration-rose-300"
+                  >
+                    {parent!.name} (آل فردان)
+                  </button>
+                ) : person.mother?.isFromFamily && person.mother?.personKey ? (
                   <button
                     onClick={() => onSelectPerson(person.mother!.personKey!, { reveal: true, center: true })}
                     className="font-semibold text-rose-800 hover:text-rose-950 underline decoration-rose-300"
@@ -470,7 +510,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
                   </button>
                 ) : (
                   <span className="font-semibold text-slate-700">
-                    {person.mother.name} {person.mother.familyOrigin ? `(${person.mother.familyOrigin})` : ''}
+                    {person.mother?.name} {person.mother?.familyOrigin ? `(${person.mother.familyOrigin})` : ''}
                   </span>
                 )}
               </p>
@@ -795,7 +835,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
               {isPrivacyRestricted ? 'الوالد ونسب الأب' : 'الوالدان ونسب الأبوين'}
             </span>
-            {isAuthorized && (
+            {isAuthorized && !isChildOfFemale && (
               <button
                 onClick={() => setIsMotherModalOpen(true)}
                 className="text-[11px] font-bold text-rose-700 hover:text-rose-900 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
@@ -809,7 +849,22 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             {/* Father */}
             <div className="p-2.5 bg-emerald-50/70 border border-emerald-200/90 rounded-xl">
               <span className="text-[10px] text-emerald-800 font-bold block">الوالد (الأب)</span>
-              {parent ? (
+              {isChildOfFemale ? (
+                resolvedHusbandName ? (
+                  <div>
+                    <span className="font-bold text-xs text-emerald-950 mt-0.5 block truncate">
+                      {resolvedHusbandName}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 block truncate">
+                      {person.mother?.familyOrigin || parent?.spouses?.[0]?.familyOrigin || 'من خارج العائلة'}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-xs text-slate-400 italic block mt-0.5">
+                    من خارج العائلة
+                  </span>
+                )
+              ) : parent ? (
                 <button
                   onClick={() => onSelectPerson(parent.key, { reveal: true, center: true })}
                   className="font-bold text-xs text-emerald-950 hover:underline mt-0.5 text-right block truncate cursor-pointer"
@@ -825,7 +880,20 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
             {!isPrivacyRestricted && (
               <div className="p-2.5 bg-rose-50/60 border border-rose-200/90 rounded-xl">
                 <span className="text-[10px] text-rose-800 font-bold block">الوالدة (الأم)</span>
-                {person.mother ? (
+                {isChildOfFemale && parent ? (
+                  <div>
+                    <button
+                      onClick={() => onSelectPerson(parent.key, { reveal: true, center: true })}
+                      className="font-bold text-xs text-rose-950 hover:underline mt-0.5 text-right block truncate cursor-pointer"
+                      title="عرض بطاقة الوالدة في الشجرة"
+                    >
+                      {parent.name}
+                    </button>
+                    <span className="text-[10px] text-rose-700 block truncate">
+                      من عائلة الفردان
+                    </span>
+                  </div>
+                ) : person.mother ? (
                   <div>
                     {person.mother.isFromFamily && person.mother.personKey ? (
                       <button
@@ -854,7 +922,7 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
           </div>
 
           {/* Dedicated Section: نسبة للأم (من زوجات الأب) خاصة إذا كان الأب متزوجاً من أكثر من زوجة */}
-          {!isPrivacyRestricted && parent && fatherSpouses.length > 0 && (
+          {!isPrivacyRestricted && !isChildOfFemale && parent && fatherSpouses.length > 0 && (
             <div className="mt-2 p-2.5 rounded-xl border bg-gradient-to-r from-rose-50/70 via-pink-50/40 to-amber-50/30 border-rose-200/80 space-y-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
@@ -991,80 +1059,86 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
         </div>
 
         {/* Nasab Lineage Box */}
-        <div className="bg-gradient-to-br from-amber-50/50 to-emerald-50/40 border border-amber-200/60 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
-              <Award className="w-4 h-4 text-amber-700" />
-              <span>النسب الشريف الكامل</span>
-            </div>
-            <button
-              onClick={handleCopyLineage}
-              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg shadow-2xs transition-colors"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-emerald-700">تم النسخ</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" />
-                  <span>نسخ النسب</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          <div className="text-sm leading-relaxed text-slate-800 mt-2">
-            {lineageChain.map((p, idx) => (
-              <React.Fragment key={`nasab-${p.key}`}>
-                {idx === 0 ? (
-                  <span className="font-bold text-slate-900 text-base">{p.name}</span>
+        {!isChildOfFemale && (
+          <div className="bg-gradient-to-br from-amber-50/50 to-emerald-50/40 border border-amber-200/60 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900">
+                <Award className="w-4 h-4 text-amber-700" />
+                <span>النسب الشريف الكامل</span>
+              </div>
+              <button
+                onClick={handleCopyLineage}
+                className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-lg shadow-2xs transition-colors"
+              >
+                {copied ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">تم النسخ</span>
+                  </>
                 ) : (
-                  <button
-                    onClick={() => onSelectPerson(p.key, { reveal: true, center: true })}
-                    className="font-medium text-slate-700 hover:text-emerald-700 hover:underline decoration-emerald-500 transition-colors mx-0.5"
-                  >
-                    {p.name}
-                  </button>
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>نسخ النسب</span>
+                  </>
                 )}
-                {idx < lineageChain.length - 1 && (
-                  <span className="text-slate-400 text-xs mx-1">
-                    {lineageChain[idx].gender === 'f' ? 'بنت' : 'بن'}
-                  </span>
-                )}
-              </React.Fragment>
-            ))}
-            {hasHistoricalRootsSubtitle(person.key) && (
-              <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
-                {HISTORICAL_ROOTS_LINE}
-              </span>
-            )}
+              </button>
+            </div>
+
+            <div className="text-sm leading-relaxed text-slate-800 mt-2">
+              {lineageChain.map((p, idx) => (
+                <React.Fragment key={`nasab-${p.key}`}>
+                  {idx === 0 ? (
+                    <span className="font-bold text-slate-900 text-base">{p.name}</span>
+                  ) : (
+                    <button
+                      onClick={() => onSelectPerson(p.key, { reveal: true, center: true })}
+                      className="font-medium text-slate-700 hover:text-emerald-700 hover:underline decoration-emerald-500 transition-colors mx-0.5"
+                    >
+                      {p.name}
+                    </button>
+                  )}
+                  {idx < lineageChain.length - 1 && (
+                    <span className="text-slate-400 text-xs mx-1">
+                      {lineageChain[idx].gender === 'f' ? 'بنت' : 'بن'}
+                    </span>
+                  )}
+                </React.Fragment>
+              ))}
+              {hasHistoricalRootsSubtitle(person.key) && (
+                <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
+                  {HISTORICAL_ROOTS_LINE}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Action Bar: Certificate, Tree Location, and Add Child */}
         <div className="space-y-2">
-          <div className={isAuthorized ? 'grid grid-cols-2 gap-2' : 'flex'}>
+          <div className={isAuthorized && !isChildOfFemale ? 'grid grid-cols-2 gap-2' : 'flex'}>
             {isAuthorized && (
               <button
                 onClick={() => onAddChild(person.key)}
-                className="flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer"
+                className={`flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer ${
+                  isChildOfFemale ? 'w-full' : ''
+                }`}
               >
                 <Plus className="w-4 h-4" />
                 <span>إضافة ابن / ابنة</span>
               </button>
             )}
 
-            <button
-              onClick={() => onOpenCertificate(person.key)}
-              className={`flex items-center justify-center gap-2 px-3 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer ${
-                isAuthorized ? '' : 'w-full'
-              }`}
-            >
-              <FileText className="w-4 h-4" />
-              <span>عرض وثيقة النسب</span>
-            </button>
+            {!isChildOfFemale && (
+              <button
+                onClick={() => onOpenCertificate(person.key)}
+                className={`flex items-center justify-center gap-2 px-3 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md transition-colors cursor-pointer ${
+                  isAuthorized ? '' : 'w-full'
+                }`}
+              >
+                <FileText className="w-4 h-4" />
+                <span>عرض وثيقة النسب</span>
+              </button>
+            )}
           </div>
 
           {onGoToTree && (
