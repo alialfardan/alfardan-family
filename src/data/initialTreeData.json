@@ -12777,6 +12777,82 @@
           "familyOrigin": "من خارج العائلة",
           "notes": "البلاد"
         }
+      },
+      {
+        "id": "m_mwwfaezaxg0y",
+        "name": "زينب",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu0vrc4id2c",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795629242711,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد علي ناصر السميع",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "سنابس"
+        }
+      },
+      {
+        "id": "m_mwwfaoiwgpd7",
+        "name": "نوراء",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu0vrc4id2c",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795629255081,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد علي ناصر السميع",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "سنابس"
+        }
+      },
+      {
+        "id": "m_mwwfavbfm80i",
+        "name": "مريم",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu0vrc4id2c",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795629263883,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد علي ناصر السميع",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "سنابس"
+        }
+      },
+      {
+        "id": "m_mwwfb4zn6dln",
+        "name": "كوثر",
+        "gender": "f",
+        "year": null,
+        "birthDate": null,
+        "note": "",
+        "parent": "am_mvu0vrc4id2c",
+        "isDeceased": false,
+        "deathYear": null,
+        "at": 1795629276420,
+        "del": false,
+        "motherInfo": {
+          "name": "احمد علي ناصر السميع",
+          "isFromFamily": false,
+          "familyOrigin": "من خارج العائلة",
+          "notes": "سنابس"
+        }
       }
     ],
     "photos": {
@@ -16781,6 +16857,14 @@
           "isFromFamily": false,
           "notes": "البلاد"
         }
+      ],
+      "am_mvu0vrc4id2c": [
+        {
+          "id": "sp_mwwfa538dfw8",
+          "name": "احمد علي ناصر السميع",
+          "isFromFamily": false,
+          "notes": "سنابس"
+        }
       ]
     },
     "mothers": {
@@ -18772,10 +18856,34 @@
         "notes": "مدينة عيسيى"
       },
       "am_mwwf05nzj7fs": {
-        "name": "احمد الصفار",
-        "isFromFamily": false,
         "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد الصفار",
         "notes": "البلاد"
+      },
+      "am_mwwfaezaxg0y": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد علي ناصر السميع",
+        "notes": "سنابس"
+      },
+      "am_mwwfaoiwgpd7": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد علي ناصر السميع",
+        "notes": "سنابس"
+      },
+      "am_mwwfavbfm80i": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد علي ناصر السميع",
+        "notes": "سنابس"
+      },
+      "am_mwwfb4zn6dln": {
+        "familyOrigin": "من خارج العائلة",
+        "isFromFamily": false,
+        "name": "احمد علي ناصر السميع",
+        "notes": "سنابس"
       }
     },
     "contactInfo": {
@@ -18789,6 +18897,6 @@
       "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
     },
     "privacyModeEnabled": true,
-    "updatedAt": 1795629079143
+    "updatedAt": 1795629292036
   }
 }
