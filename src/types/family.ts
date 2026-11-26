@@ -151,6 +151,7 @@ export interface ProcessedPerson {
   branchName?: string;
   spouses?: SpouseInfo[];
   mother?: MotherInfo | null;
+  isSibtLineage?: boolean;
 }
 
 export interface FamilyTreeProcessed {

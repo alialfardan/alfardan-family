@@ -148,6 +148,7 @@ export const PersonDetailDrawer: React.FC<PersonDetailDrawerProps> = ({
   const lineageChain = person ? getLineageChain(personKey, registry.people) : [];
   const parent = person?.parentKey ? registry.people.get(person.parentKey) : null;
   const isChildOfFemale = parent?.gender === 'f';
+  const isSibtLineage = Boolean(person?.isSibtLineage || isChildOfFemale);
   const fatherNameFormatted = person ? getFatherName(person.key, registry.people) : '';
   const motherNameFormatted = person ? getMotherNameFormatted(person.key, registry.people) : '';
   const motherKeyForClick = isChildOfFemale ? parent?.key : person?.mother?.personKey;
@@ -322,15 +323,15 @@ function getSpouseOrdinal(index: number, isFemaleUser: boolean): string {
         ...(isModalView ? {} : { maxHeight: 'calc(100dvh - 80px)' })
       }}
     >
-      {/* Top Banner with Branch Color Accent (or Golden Gradient for children of daughters) */}
+      {/* Top Banner with Branch Color Accent (or Golden Gradient for sibt lineage descendants) */}
       <div
         className={`relative flex-shrink-0 px-6 pt-4 pb-5 border-b transition-colors touch-pan-y ${
-          isChildOfFemale
+          isSibtLineage
             ? 'bg-gradient-to-r from-yellow-200 via-yellow-300 to-amber-300 border-amber-400/70'
             : 'border-slate-100'
         }`}
         style={{
-          ...(isChildOfFemale
+          ...(isSibtLineage
             ? {}
             : { background: `linear-gradient(135deg, ${branchInfo.bg} 0%, #ffffff 80%)` }),
           touchAction: 'pan-y'

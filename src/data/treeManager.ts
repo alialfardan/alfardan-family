@@ -1155,7 +1155,8 @@ export function buildFamilyRegistry(state: FamilyState): FamilyTreeProcessed {
       generation: 0,
       branch: 'b0',
       spouses: state.spouses?.[key] ?? ov.spouses ?? [],
-      mother: resolvedMother
+      mother: resolvedMother,
+      isSibtLineage: false
     });
   });
 
@@ -1196,7 +1197,8 @@ export function buildFamilyRegistry(state: FamilyState): FamilyTreeProcessed {
       generation: 0,
       branch: 'b0',
       spouses: state.spouses?.[key] ?? m.spouses ?? [],
-      mother: resolvedMother
+      mother: resolvedMother,
+      isSibtLineage: false
     });
   });
 
@@ -1302,18 +1304,41 @@ export function buildFamilyRegistry(state: FamilyState): FamilyTreeProcessed {
   const fardanKey = 'oF';
   const rootKey = 'ot0';
 
-  // Compute depth from root
-  function computeGeneration(k: string, currentGen = 1, visited = new Set<string>()): void {
-    if (visited.has(k)) return;
-    visited.add(k);
+  // Compute depth from root & propagate retroactive golden sibt lineage (التوريث اللوني الذهبي لذرية الأسباط)
+  // Top-down traversal: once the path passes through a female node (mother),
+  // propagate isSibtLineage = true to her children and all subsequent descending generations.
+  const visitedTraversal = new Set<string>();
+  function computeGeneration(k: string, currentGen = 1, inheritedSibt = false): void {
+    if (visitedTraversal.has(k)) return;
+    visitedTraversal.add(k);
     const p = people.get(k);
     if (!p) return;
     p.generation = currentGen;
+    p.isSibtLineage = inheritedSibt;
+    const nextSibt = inheritedSibt || p.gender === 'f';
     p.childrenKeys.forEach(childKey => {
-      computeGeneration(childKey, currentGen + 1, visited);
+      computeGeneration(childKey, currentGen + 1, nextSibt);
     });
   }
-  computeGeneration(rootKey, 1);
+  computeGeneration(rootKey, 1, false);
+
+  // Retroactive fallback for any node not reached from rootKey so all detached/orphan subtrees also inherit isSibtLineage
+  people.forEach(p => {
+    if (visitedTraversal.has(p.key)) return;
+    let cur: ProcessedPerson | undefined = p;
+    let guard = 0;
+    let hasFemaleAncestor = false;
+    while (cur && cur.parentKey && guard++ < 60) {
+      const parent = people.get(cur.parentKey);
+      if (!parent) break;
+      if (parent.gender === 'f' || parent.isSibtLineage) {
+        hasFemaleAncestor = true;
+        break;
+      }
+      cur = parent;
+    }
+    p.isSibtLineage = hasFemaleAncestor;
+  });
 
   // Identify main family branch heads:
   // 1) Direct children of Grandfather Al-Fardan (am_mvzm8u6pyafp) -> Grandfather Mohammad (o4, ذرية محمد) & Grandfather Hussain (o15, ذرية حسين)

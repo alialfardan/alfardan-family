@@ -818,6 +818,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
               const isFemale = person.gender === 'f';
               const parentPerson = person.parentKey ? registry.people.get(person.parentKey) : null;
               const isChildOfFemale = parentPerson?.gender === 'f';
+              const isSibtLineage = Boolean(person.isSibtLineage || isChildOfFemale);
               const mainBranch = getPersonMainBranch(person, registry.people);
               const visibleChildrenCount = isPrivacyRestricted
                 ? person.childrenKeys
@@ -867,7 +868,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                     height={cardHeight}
                     rx={14}
                     fill={
-                      isChildOfFemale
+                      isSibtLineage
                         ? 'url(#gold-node-gradient)'
                         : isSelected
                         ? '#09090b'
@@ -884,7 +885,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                     stroke={
                       isNodeOnLineage
                         ? '#000000'
-                        : isChildOfFemale
+                        : isSibtLineage
                         ? (isFemale ? '#fb7185' : '#14b8a6')
                         : isFemale
                         ? (mainBranch === 'ayoub'
@@ -909,7 +910,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                         ? 3.2
                         : isAncestorOnPath
                         ? 3
-                        : isChildOfFemale
+                        : isSibtLineage
                         ? 2
                         : isFemale
                         ? 3
@@ -926,7 +927,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                   {/* Branch / Gender Color Accent Stripe (Right edge in RTL) */}
                   <path
                     d={`M ${cardWidth / 2} ${-cardHeight / 2 + 10} A 10 10 0 0 1 ${cardWidth / 2} ${cardHeight / 2 - 10}`}
-                    stroke={isChildOfFemale ? (isFemale ? '#f43f5e' : '#0d9488') : isFemale ? '#f43f5e' : branchInfo.accent}
+                    stroke={isSibtLineage ? (isFemale ? '#f43f5e' : '#0d9488') : isFemale ? '#f43f5e' : branchInfo.accent}
                     strokeWidth={3.5}
                     strokeLinecap="round"
                   />
@@ -937,8 +938,8 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                       cx="0"
                       cy="0"
                       r={NODE_AVATAR_RADIUS}
-                      fill={isChildOfFemale ? (isFemale ? '#fff1f2' : '#f0fdfa') : isFemale ? '#fff1f2' : branchInfo.bg}
-                      stroke={isChildOfFemale ? (isFemale ? '#fda4af' : '#5eead4') : isFemale ? '#fbcfe8' : branchInfo.border}
+                      fill={isSibtLineage ? (isFemale ? '#fff1f2' : '#f0fdfa') : isFemale ? '#fff1f2' : branchInfo.bg}
+                      stroke={isSibtLineage ? (isFemale ? '#fda4af' : '#5eead4') : isFemale ? '#fbcfe8' : branchInfo.border}
                       strokeWidth={1}
                     />
                     {/* Always render initial letter in case image fails to load or is not present */}
@@ -947,7 +948,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                       y="1"
                       textAnchor="middle"
                       dominantBaseline="central"
-                      fill={isChildOfFemale ? (isFemale ? '#e11d48' : '#0f766e') : isFemale ? '#e11d48' : branchInfo.accent}
+                      fill={isSibtLineage ? (isFemale ? '#e11d48' : '#0f766e') : isFemale ? '#e11d48' : branchInfo.accent}
                       fontSize="12"
                       fontWeight="700"
                       className="font-['Alexandria']"
@@ -989,7 +990,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                           textAnchor="start"
                           dominantBaseline="central"
                           fill={
-                            isChildOfFemale
+                            isSibtLineage
                               ? '#000000'
                               : isSelected
                               ? '#ffffff'
@@ -998,7 +999,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                               : '#121714'
                           }
                           fontSize="13"
-                          fontWeight={isNodeOnLineage || isFardan || isChildOfFemale ? '700' : '600'}
+                          fontWeight={isNodeOnLineage || isFardan || isSibtLineage ? '700' : '600'}
                           className="font-['Readex_Pro']"
                           direction="rtl"
                         >
@@ -1013,7 +1014,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                             textAnchor="start"
                             dominantBaseline="central"
                             fill={
-                              isChildOfFemale
+                              isSibtLineage
                                 ? '#1c1917'
                                 : isSelected
                                 ? '#d4d4d8'
@@ -1022,7 +1023,7 @@ export const TreeCanvas: React.FC<TreeCanvasProps> = ({
                                 : '#64748b'
                             }
                             fontSize="9.5"
-                            fontWeight={isAncestorOnPath || isChildOfFemale ? '600' : '400'}
+                            fontWeight={isAncestorOnPath || isSibtLineage ? '600' : '400'}
                             className="font-['Readex_Pro']"
                             direction="rtl"
                           >
