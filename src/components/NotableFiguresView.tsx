@@ -541,7 +541,7 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                         <span className="font-bold text-slate-800 ml-1">عمود النسب:</span>
                         <span className="font-semibold text-slate-800">{lineageStr}</span>
                       </div>
-                      {fig.personKey && hasHistoricalRootsSubtitle(fig.personKey) && (
+                      {fig.personKey && hasHistoricalRootsSubtitle(fig.personKey, registry.people) && (
                         <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                           {HISTORICAL_ROOTS_LINE}
                         </span>
@@ -664,7 +664,7 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
                   <p className="text-xs sm:text-sm font-bold text-emerald-950 leading-relaxed">
                     {formatLineageString(selectedFigure.personKey, registry.people)}
                   </p>
-                  {hasHistoricalRootsSubtitle(selectedFigure.personKey) && (
+                  {hasHistoricalRootsSubtitle(selectedFigure.personKey, registry.people) && (
                     <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                       {HISTORICAL_ROOTS_LINE}
                     </span>

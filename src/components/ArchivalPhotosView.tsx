@@ -890,7 +890,7 @@ export const ArchivalPhotosView: React.FC<ArchivalPhotosViewProps> = ({
                                 <p className="text-xs font-bold text-slate-900 leading-snug">
                                   {formatLineageString(key, registry.people) || person.name}
                                 </p>
-                                {hasHistoricalRootsSubtitle(key) && (
+                                {hasHistoricalRootsSubtitle(key, registry.people) && (
                                   <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                                     {HISTORICAL_ROOTS_LINE}
                                   </span>

@@ -44,6 +44,7 @@ import { AddEditMemberModal } from './components/AddEditMemberModal';
 import { DocumentArchiveView } from './components/DocumentArchiveView';
 import { NotableFiguresView } from './components/NotableFiguresView';
 import { FamilyDirectoryView } from './components/FamilyDirectoryView';
+import { FamilyGravesView } from './components/FamilyGravesView';
 import { AboutAndAnalyticsView } from './components/AboutAndAnalyticsView';
 import { PedigreeCertificateModal } from './components/PedigreeCertificateModal';
 import { BackupModal, GITHUB_PAT_STORAGE_KEY } from './components/BackupModal';
@@ -985,6 +986,47 @@ export default function App() {
     });
     showToast(isDeceased ? 'تم توثيق حالة الوفاة وتحديث السحابة بنجاح 🖤' : 'تم تحديث حالة الفرد إلى: على قيد الحياة');
   };
+
+  // Update Grave Info (Image and Map URL)
+  const handleUpdateGraveInfo = useCallback((personKey: string, graveImageUrl: string | null, graveMapUrl: string | null) => {
+    if (!isAuthorized) {
+      showToast('تعديل معلومات القبور مخصص للمشرفين والمصرح لهم فقط', 'info');
+      setIsAuthModalOpen(true);
+      return;
+    }
+
+    setFamilyState(prev => {
+      const nextTs = getMonotonicTimestamp(prev);
+      let nextState: FamilyState;
+      if (personKey.startsWith('a')) {
+        const id = personKey.slice(1);
+        nextState = {
+          ...prev,
+          members: prev.members.map(m =>
+            m.id === id ? { ...m, graveImageUrl, graveMapUrl, at: nextTs } : m
+          ),
+          updatedAt: nextTs
+        };
+      } else {
+        nextState = {
+          ...prev,
+          over: {
+            ...prev.over,
+            [personKey]: {
+              ...(prev.over[personKey] || {}),
+              graveImageUrl,
+              graveMapUrl,
+              at: nextTs
+            }
+          },
+          updatedAt: nextTs
+        };
+      }
+      persistAndSyncImmediately(nextState);
+      return nextState;
+    });
+    showToast('تم تحديث معلومات القبر والموقع بنجاح 📍');
+  }, [isAuthorized, persistAndSyncImmediately, showToast]);
 
   // Update Birth Date directly from Person Drawer
   const handleUpdateBirthDate = (key: string, birthDate: string | null, year: number | null) => {
@@ -2039,6 +2081,10 @@ export default function App() {
                   onUpdateDeathStatus={handleUpdateDeathStatus}
                   onUpdateBirthDate={handleUpdateBirthDate}
                   archivalPhotos={familyState.archivalPhotos || []}
+                  onOpenGraves={() => {
+                    setIsDrawerOpen(false);
+                    setCurrentTab('graves');
+                  }}
                 />
               </div>
             )}
@@ -2070,6 +2116,29 @@ export default function App() {
               isAuthorized={isAuthorized}
               isPrivacyRestricted={isPrivacyRestricted}
               onOpenSearchResults={(q) => setSearchResultsModal({ isOpen: true, query: q })}
+              onNavigateTab={(tab) => setCurrentTab(tab)}
+            />
+          </div>
+        )}
+
+        {currentTab === 'graves' && (
+          <div
+            className="w-full h-full overflow-y-auto overscroll-contain touch-pan-y"
+            style={{ overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch' }}
+          >
+            <FamilyGravesView
+              registry={registry}
+              onSelectPerson={(key, opts) => {
+                setCurrentTab('tree');
+                handleSelectPerson(key, opts);
+              }}
+              onOpenPersonDetail={(key) => {
+                handleSelectPerson(key);
+                setCurrentTab('tree');
+              }}
+              onSwitchToHub={() => setCurrentTab('directory')}
+              isAuthorized={isAuthorized}
+              onUpdateGraveInfo={handleUpdateGraveInfo}
             />
           </div>
         )}

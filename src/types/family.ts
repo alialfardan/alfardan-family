@@ -34,6 +34,8 @@ export interface AddedMember {
   note?: string;
   isDeceased?: boolean;
   deathYear?: number | null;
+  graveImageUrl?: string | null;
+  graveMapUrl?: string | null;
   at?: number;
   del?: boolean;
   spouses?: SpouseInfo[];
@@ -49,6 +51,8 @@ export interface MemberOverrides {
   parent?: string;
   isDeceased?: boolean;
   deathYear?: number | null;
+  graveImageUrl?: string | null;
+  graveMapUrl?: string | null;
   spouses?: SpouseInfo[];
   motherInfo?: MotherInfo;
   del?: boolean;
@@ -131,6 +135,8 @@ export interface ProcessedPerson {
   note: string;
   isDeceased?: boolean;
   deathYear?: number | null;
+  graveImageUrl?: string | null;
+  graveMapUrl?: string | null;
   parentKey: string | null;
   origParentKey: string | null;
   isNew: boolean;
@@ -166,4 +172,4 @@ export interface FamilyTreeProcessed {
   };
 }
 
-export type ActiveTab = 'home' | 'tree' | 'directory' | 'notables' | 'photos' | 'doc' | 'about' | 'certificate' | 'contact';
+export type ActiveTab = 'home' | 'tree' | 'directory' | 'notables' | 'photos' | 'doc' | 'graves' | 'about' | 'certificate' | 'contact';

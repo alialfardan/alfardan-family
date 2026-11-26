@@ -447,7 +447,7 @@ export const FamilyDirectoryView: React.FC<FamilyDirectoryViewProps> = ({
                     <p className="text-xs text-emerald-800 font-semibold leading-snug mt-0.5" title={formatLineageString(person.key, registry.people)}>
                       {formatLineageString(person.key, registry.people)}
                     </p>
-                    {hasHistoricalRootsSubtitle(person.key) && (
+                    {hasHistoricalRootsSubtitle(person.key, registry.people) && (
                       <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                         {HISTORICAL_ROOTS_LINE}
                       </span>

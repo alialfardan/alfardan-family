@@ -295,55 +295,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </span>
         </button>
 
-        {/* 4. أعلام العائلة */}
-        <button
-          onClick={() => onTabChange('notables')}
-          className={`w-full flex flex-col items-center justify-center py-1 sm:py-1.5 px-1 rounded-2xl transition-all cursor-pointer ${
-            currentTab === 'notables'
-              ? 'text-emerald-800 font-bold'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-          title="أعلام ورجالات عائلة الفردان"
-        >
-          <div
-            className={`p-1.5 rounded-2xl transition-all ${
-              currentTab === 'notables'
-                ? 'bg-emerald-800 text-white shadow-md scale-105'
-                : 'text-slate-600'
-            }`}
-          >
-            <Award className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <span className="text-[9px] sm:text-[10px] font-bold tracking-tight text-center leading-tight mt-0.5 truncate max-w-full">
-            أعلام العائلة
-          </span>
-        </button>
-
-        {/* 5. الوثائق (الوثيقة الأصلية والصور التاريخية الموحدة) */}
-        <button
-          onClick={() => onTabChange('doc')}
-          className={`w-full flex flex-col items-center justify-center py-1 sm:py-1.5 px-1 rounded-2xl transition-all cursor-pointer ${
-            currentTab === 'doc' || currentTab === 'photos'
-              ? 'text-emerald-800 font-bold'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
-          }`}
-          title="الوثائق والمخطوطات والصور التاريخية"
-        >
-          <div
-            className={`p-1.5 rounded-2xl transition-all ${
-              currentTab === 'doc' || currentTab === 'photos'
-                ? 'bg-emerald-800 text-white shadow-md scale-105'
-                : 'text-slate-600'
-            }`}
-          >
-            <FileText className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <span className="text-[9px] sm:text-[10px] font-bold tracking-tight text-center leading-tight mt-0.5 truncate max-w-full">
-            الوثائق
-          </span>
-        </button>
-
-        {/* 6. الإحصاءات */}
+        {/* 4. الإحصاءات */}
         <button
           onClick={() => onTabChange('about')}
           className={`w-full flex flex-col items-center justify-center py-1 sm:py-1.5 px-1 rounded-2xl transition-all ${

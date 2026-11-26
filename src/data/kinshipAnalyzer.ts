@@ -340,15 +340,20 @@ export function formatPatronymicChain(
   isPrivacyRestricted: boolean = false
 ): string {
   if (!path || path.length === 0) return '';
-  return path
-    .map((p, idx) => {
-      const disp = formatPersonDisplayName(p, people, isPrivacyRestricted);
-      if (idx === 0) return disp;
+  const parts: string[] = [];
+  for (let idx = 0; idx < path.length; idx++) {
+    const p = path[idx];
+    if (idx > 0 && p.gender === 'f') break;
+    const disp = formatPersonDisplayName(p, people, isPrivacyRestricted);
+    if (idx === 0) {
+      parts.push(disp);
+    } else {
       const prev = path[idx - 1];
       const connector = prev.gender === 'f' ? 'بنت' : 'بن';
-      return `${connector} ${disp}`;
-    })
-    .join(' ');
+      parts.push(`${connector} ${disp}`);
+    }
+  }
+  return parts.join(' ');
 }
 
 /**

@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { FamilyTreeProcessed, ProcessedPerson, SpouseInfo, MotherInfo, ArchivalPhoto } from '../types/family';
-import { BRANCH_COLORS, getArabicInitial, getLineageChain, formatLineageString, normalizeArabic, getQuadLineageName, searchFamilyMembers, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle } from '../data/treeManager';
+import { BRANCH_COLORS, getArabicInitial, getLineageChain, formatLineageString, normalizeArabic, getQuadLineageName, searchFamilyMembers, HISTORICAL_ROOTS_LINE, hasHistoricalRootsSubtitle, getFatherName } from '../data/treeManager';
 import { MemberAvatar } from './MemberAvatar';
 import { PersonDetailDrawer } from './PersonDetailDrawer';
 import {
@@ -681,7 +681,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
                         <p className="text-[11px] text-emerald-800 font-semibold truncate mt-0.5">
                           {headLineageText}
                         </p>
-                        {hasHistoricalRootsSubtitle(head.key) && (
+                        {hasHistoricalRootsSubtitle(head.key, registry.people) && (
                           <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                             {HISTORICAL_ROOTS_LINE}
                           </span>
@@ -889,12 +889,18 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
                 {parent && (
                   <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
                     {currentPerson.gender === 'f' ? 'ابنة' : 'ابن'}{' '}
-                    <button
-                      onClick={() => handleOpenPerson(parent.key)}
-                      className="font-bold text-slate-700 hover:text-emerald-700 underline"
-                    >
-                      {parent.name}
-                    </button>
+                    {parent.gender === 'f' ? (
+                      <span className="font-bold text-slate-700">
+                        {getFatherName(currentPerson.key, registry.people)}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleOpenPerson(parent.key)}
+                        className="font-bold text-slate-700 hover:text-emerald-700 underline"
+                      >
+                        {parent.name}
+                      </button>
+                    )}
                   </p>
                 )}
               </div>
@@ -977,7 +983,7 @@ export const FamilyExplorerView: React.FC<FamilyExplorerViewProps> = ({
               <p className="text-slate-900 font-semibold">
                 {formatLineageString(currentPerson.key, registry.people)}
               </p>
-              {hasHistoricalRootsSubtitle(currentPerson.key) && (
+              {hasHistoricalRootsSubtitle(currentPerson.key, registry.people) && (
                 <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                   {HISTORICAL_ROOTS_LINE}
                 </span>

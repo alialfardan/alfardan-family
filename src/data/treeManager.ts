@@ -1446,15 +1446,41 @@ export function isHistoricalRootPerson(key: string | null | undefined): boolean 
   return Boolean(key && HISTORICAL_ROOT_KEYS.has(key));
 }
 
-export function hasHistoricalRootsSubtitle(key: string | null | undefined): boolean {
-  return Boolean(key && !HISTORICAL_ROOT_KEYS.has(key));
+export function hasPatrilinealFemaleBreak(
+  key: string | null | undefined,
+  registry?: Map<string, ProcessedPerson>
+): boolean {
+  if (!key || !registry) return false;
+  let cur = registry.get(key);
+  let guard = 0;
+  while (cur && guard++ < 50) {
+    if (!cur.parentKey) return false;
+    const parent = registry.get(cur.parentKey);
+    if (!parent) return false;
+    if (parent.gender === 'f') return true;
+    cur = parent;
+  }
+  return false;
 }
 
-export function getHistoricalRootsSubtitle(key: string | null | undefined): string | null {
-  return hasHistoricalRootsSubtitle(key) ? HISTORICAL_ROOTS_LINE : null;
+export function hasHistoricalRootsSubtitle(
+  key: string | null | undefined,
+  registry?: Map<string, ProcessedPerson>
+): boolean {
+  if (!key || HISTORICAL_ROOT_KEYS.has(key)) return false;
+  if (registry && hasPatrilinealFemaleBreak(key, registry)) return false;
+  return true;
 }
 
-// Compute complete historical lineage chain all the way up to the founding root ('ot0' الشيخ علي)
+export function getHistoricalRootsSubtitle(
+  key: string | null | undefined,
+  registry?: Map<string, ProcessedPerson>
+): string | null {
+  return hasHistoricalRootsSubtitle(key, registry) ? HISTORICAL_ROOTS_LINE : null;
+}
+
+// Compute complete patrilineal lineage chain up to the founding root ('ot0' الشيخ علي),
+// strictly stopping immediately when encountering any female parent node (never climb through mother or grandmother).
 export function getFullLineageChain(key: string, registry: Map<string, ProcessedPerson>): ProcessedPerson[] {
   const chain: ProcessedPerson[] = [];
   let cur = registry.get(key);
@@ -1462,14 +1488,16 @@ export function getFullLineageChain(key: string, registry: Map<string, Processed
   while (cur && guard++ < 50) {
     chain.push(cur);
     if (!cur.parentKey) break;
-    cur = registry.get(cur.parentKey);
+    const parent = registry.get(cur.parentKey);
+    if (!parent || parent.gender === 'f') break;
+    cur = parent;
   }
   return chain;
 }
 
-// Compute primary Arabic lineage chain ending at "فردان" (for Fardan bin Abdulhussain descendants)
-// or "أيوب" (for Ayoub descendants), stopping before the 3 founding historical roots ('ot2', 'ot1', 'ot0'),
-// except when inspecting one of the 3 founding ancestors themselves.
+// Compute primary Arabic patrilineal lineage chain ending at "فردان" (for Fardan bin Abdulhussain descendants)
+// or "أيوب" (for Ayoub descendants), stopping before the 3 founding historical roots ('ot2', 'ot1', 'ot0')
+// AND strictly stopping before any female parent node.
 export function getLineageChain(key: string, registry: Map<string, ProcessedPerson>): ProcessedPerson[] {
   const fullChain = getFullLineageChain(key, registry);
   if (HISTORICAL_ROOT_KEYS.has(key)) {
@@ -1492,28 +1520,40 @@ export function getPatrilinealLineageString(key: string, registry: Map<string, P
   }
 
   if (isChildOfFemale) {
-    const fatherName = getFatherName(key, registry);
-    let fatherPerson: ProcessedPerson | undefined = undefined;
-    for (const p of registry.values()) {
-      if (!p.deleted && normalizeArabic(p.name) === normalizeArabic(fatherName)) {
-        fatherPerson = p;
-        break;
+    const spouses = parent.spouses || [];
+    let matchedSpouse: SpouseInfo | undefined;
+    if (spouses.length > 0) {
+      if (person.mother?.name && normalizeArabic(person.mother.name) !== normalizeArabic(parent.name)) {
+        matchedSpouse = spouses.find(s => normalizeArabic(s.name) === normalizeArabic(person.mother!.name));
+      }
+      if (!matchedSpouse) {
+        matchedSpouse = spouses[0];
       }
     }
 
-    if (fatherPerson && fatherPerson.key !== person.key) {
+    const fatherPerson =
+      matchedSpouse?.isFromFamily && matchedSpouse.personKey
+        ? registry.get(matchedSpouse.personKey)
+        : undefined;
+
+    if (fatherPerson && !fatherPerson.deleted && fatherPerson.key !== person.key && fatherPerson.gender !== 'f') {
       const fatherLineage = getLineageChain(fatherPerson.key, registry);
-      return [
-        person.name,
-        ...fatherLineage.map((p, idx) => {
-          if (idx === 0) return `${connector} ${p.name}`;
-          if (idx === fatherLineage.length - 1) return p.name;
-          return `${p.name} ${p.gender === 'f' ? 'بنت' : 'بن'}`;
+      const fatherChainStr = fatherLineage
+        .map((p, idx) => {
+          if (idx === 0) return p.name;
+          const prev = fatherLineage[idx - 1];
+          const conn = prev.gender === 'f' ? 'بنت' : 'بن';
+          return `${conn} ${p.name}`;
         })
-      ].join(' ');
-    } else {
-      return `${person.name} ${connector} ${fatherName}`;
+        .join(' ');
+      return `${person.name} ${connector} ${fatherChainStr}`;
     }
+
+    const fatherName = getFatherName(key, registry);
+    if (!fatherName || fatherName === 'من خارج العائلة') {
+      return person.name;
+    }
+    return `${person.name} ${connector} ${fatherName}`;
   } else {
     const chain = getLineageChain(key, registry);
     return chain
@@ -2069,13 +2109,21 @@ export function getFatherName(personKey: string, people: Map<string, ProcessedPe
   if (parent.gender === 'f') {
     const spouses = parent.spouses || [];
     if (spouses.length > 0) {
-      if (person.mother?.name) {
+      if (
+        person.mother?.name &&
+        person.mother.personKey !== parent.key &&
+        normalizeArabic(person.mother.name) !== normalizeArabic(parent.name)
+      ) {
         const matchedSpouse = spouses.find(s => normalizeArabic(s.name) === normalizeArabic(person.mother!.name));
         if (matchedSpouse) return matchedSpouse.name;
       }
       return spouses[0].name || 'من خارج العائلة';
     }
-    if (person.mother?.name) {
+    if (
+      person.mother?.name &&
+      person.mother.personKey !== parent.key &&
+      normalizeArabic(person.mother.name) !== normalizeArabic(parent.name)
+    ) {
       return person.mother.name;
     }
     return 'من خارج العائلة';

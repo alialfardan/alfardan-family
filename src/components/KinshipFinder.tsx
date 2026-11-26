@@ -462,7 +462,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <p className="font-naskh text-sm font-semibold text-emerald-900 leading-snug">
                       {getQuadLineageName(personA.key, registry.people, 4)}
                     </p>
-                    {hasHistoricalRootsSubtitle(personA.key) && (
+                    {hasHistoricalRootsSubtitle(personA.key, registry.people) && (
                       <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                         {HISTORICAL_ROOTS_LINE}
                       </span>
@@ -614,7 +614,7 @@ export const KinshipFinder: React.FC<KinshipFinderProps> = ({
                     <p className="font-naskh text-sm font-semibold text-amber-950 leading-snug">
                       {getQuadLineageName(personB.key, registry.people, 4)}
                     </p>
-                    {hasHistoricalRootsSubtitle(personB.key) && (
+                    {hasHistoricalRootsSubtitle(personB.key, registry.people) && (
                       <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block">
                         {HISTORICAL_ROOTS_LINE}
                       </span>

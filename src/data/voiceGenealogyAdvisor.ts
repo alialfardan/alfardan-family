@@ -389,7 +389,7 @@ export function formatDeepProfileResponse(
   const sections: AdvisorResponse['sections'] = [];
 
   // 1. عمود النسب المتصل والجذور التاريخية
-  const rootsSub = hasHistoricalRootsSubtitle(person.key) ? `\n${HISTORICAL_ROOTS_LINE}` : '';
+  const rootsSub = hasHistoricalRootsSubtitle(person.key, people) ? `\n${HISTORICAL_ROOTS_LINE}` : '';
   const lineageParagraph = `${isMale ? 'هو' : 'هي'} «${profile.fullLineageText}»، ${isMale ? 'ينتمي' : 'تنتمي'} إلى ${genOrdinal} في شجرة عائلة الفردان الكرزكاني (${person.branchName || 'الأصل الجامع'}).${rootsSub}`;
   sections.push({
     heading: '١. عمود النسب المتصل والجذور التاريخية',
@@ -669,7 +669,7 @@ export function formatTwoPersonKinshipResponse(
 
   // 2. تتبع عمود النسب للطرفين
   const rootsSubBoth =
-    hasHistoricalRootsSubtitle(personA.key) || hasHistoricalRootsSubtitle(personB.key)
+    hasHistoricalRootsSubtitle(personA.key, people) || hasHistoricalRootsSubtitle(personB.key, people)
       ? [HISTORICAL_ROOTS_LINE]
       : [];
   const lineageBothText = [

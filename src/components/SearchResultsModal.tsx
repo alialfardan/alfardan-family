@@ -409,7 +409,7 @@ export const SearchResultsModal: React.FC<SearchResultsModalProps> = ({
                         {lineageStr}
                       </span>
                     </div>
-                    {hasHistoricalRootsSubtitle(person.key) && (
+                    {hasHistoricalRootsSubtitle(person.key, registry.people) && (
                       <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-0.5 block font-['Readex_Pro']">
                         {HISTORICAL_ROOTS_LINE}
                       </span>

@@ -504,7 +504,7 @@ export const PedigreeCertificateModal: React.FC<PedigreeCertificateModalProps> =
                     </React.Fragment>
                   ))}
                 </div>
-                {hasHistoricalRootsSubtitle(person.key) && (
+                {hasHistoricalRootsSubtitle(person.key, registry.people) && (
                   <span className="text-[11px] text-stone-400 dark:text-slate-500 font-normal mt-2 block font-['Readex_Pro',sans-serif]">
                     {HISTORICAL_ROOTS_LINE}
                   </span>
