@@ -2116,7 +2116,6 @@ export default function App() {
               isAuthorized={isAuthorized}
               isPrivacyRestricted={isPrivacyRestricted}
               onOpenSearchResults={(q) => setSearchResultsModal({ isOpen: true, query: q })}
-              onNavigateTab={(tab) => setCurrentTab(tab)}
             />
           </div>
         )}

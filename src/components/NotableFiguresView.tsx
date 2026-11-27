@@ -117,7 +117,7 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
       }
       if (!normQuery) return true;
       const haystack = normalizeArabic(
-        `${fig.name} ${fig.title} ${fig.branch} ${fig.biography} ${fig.birthDeath} ${(fig.achievements || []).join(' ')}`
+        `${fig.name || ''} ${fig.title || ''} ${fig.branch || ''} ${fig.biography || ''} ${fig.birthDeath || ''} ${(Array.isArray(fig.achievements) ? fig.achievements : []).join(' ')}`
       );
       return haystack.includes(normQuery);
     });
@@ -178,15 +178,15 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
     }
     setEditingFigure(fig);
     setFormPersonKey(fig.personKey || 'oF');
-    setFormName(fig.name);
-    setFormTitle(fig.title);
-    setFormBranch(fig.branch);
-    setFormBirthDeath(fig.birthDeath);
+    setFormName(fig.name || '');
+    setFormTitle(fig.title || '');
+    setFormBranch(fig.branch || 'ذرية محمد');
+    setFormBirthDeath(fig.birthDeath || '');
     setFormEra(fig.era || '');
-    setFormBiography(fig.biography);
-    setFormAchievementsText((fig.achievements || []).join('\n'));
+    setFormBiography(fig.biography || '');
+    setFormAchievementsText((Array.isArray(fig.achievements) ? fig.achievements : []).join('\n'));
     setFormPhoto(fig.photo || '');
-    setFormManuscripts(fig.manuscripts || []);
+    setFormManuscripts(Array.isArray(fig.manuscripts) ? fig.manuscripts : []);
     setPersonSearchQuery('');
     setNewMsTitle('');
     setNewMsEra('');
@@ -340,14 +340,15 @@ export const NotableFiguresView: React.FC<NotableFiguresViewProps> = ({
     }
   };
 
-  const getBranchBadgeStyle = (branch: string) => {
-    if (branch.includes('محمد')) {
+  const getBranchBadgeStyle = (branch?: string) => {
+    const safeBranch = branch || '';
+    if (safeBranch.includes('محمد')) {
       return 'bg-emerald-50 text-emerald-800 border-emerald-200';
     }
-    if (branch.includes('حسين')) {
+    if (safeBranch.includes('حسين')) {
       return 'bg-purple-50 text-purple-800 border-purple-200';
     }
-    if (branch.includes('عبدالله')) {
+    if (safeBranch.includes('عبدالله')) {
       return 'bg-blue-50 text-blue-800 border-blue-200';
     }
     return 'bg-amber-50 text-amber-900 border-amber-200';

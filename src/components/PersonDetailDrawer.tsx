@@ -59,6 +59,7 @@ interface PersonDetailDrawerProps {
   isPrivacyRestricted?: boolean;
   archivalPhotos?: ArchivalPhoto[];
   onGoToTree?: (personKey: string) => void;
+  onOpenGraves?: () => void;
   isModalView?: boolean;
 }
 
