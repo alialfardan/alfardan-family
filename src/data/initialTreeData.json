@@ -21686,9 +21686,9 @@
         "name": "عقيل عبدالرضا الكليتي"
       },
       "am_mwzkyl5v150w": {
-        "familyOrigin": "من خارج العائلة",
+        "name": "عقيل عبدالرضا الكليتي",
         "isFromFamily": false,
-        "name": "عقيل عبدالرضا الكليتي"
+        "familyOrigin": "من خارج العائلة"
       }
     },
     "contactInfo": {
@@ -21702,6 +21702,6 @@
       "verifiedBy": "الأستاذ / عبدالله عبدالكريم حسين الفردان"
     },
     "privacyModeEnabled": true,
-    "updatedAt": 1795820278101
+    "updatedAt": 1795820283562
   }
 }
